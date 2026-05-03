@@ -176,7 +176,6 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     const uploadSource = searchParams.get("source");
 
     if (repoUrl) {
-      setGithubUrl(repoUrl);
       void loadRepo(repoUrl);
       return;
     }
@@ -333,14 +332,9 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   function loadSample(sampleId: string) {
     const sample = sampleSources.find((item) => item.id === sampleId) ?? DEFAULT_SAMPLE;
     replaceSource(sample.source, `Loaded sample: ${sample.title}`);
-    setGithubUrl("");
 
     if (sample.source.kind === "pdf") {
       setPdfInsight(buildPdfFallbackInsight(sample.source));
-    }
-
-    if (sample.source.kind === "text" || sample.source.kind === "file") {
-      setPastedText(sample.source.text);
     }
   }
 
@@ -502,7 +496,6 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
         fetchedAt: new Date().toISOString(),
       };
 
-      setPastedText(text);
       replaceSource(nextSource, `Loaded ${file.name}.`);
     } catch (nextError) {
       const message =
@@ -926,7 +919,6 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
                   onSourceChange={(value) => {
                     if (activeSource.kind === "text" || activeSource.kind === "file") {
                       setSource({ ...activeSource, text: value });
-                      setPastedText(value);
                       setStandaloneInsightState({ status: "idle" });
                     }
                   }}
