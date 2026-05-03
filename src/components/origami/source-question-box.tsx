@@ -75,7 +75,7 @@ export function SourceQuestionBox({
       </div>
 
       <div className="space-y-4 p-4">
-        <div className="rounded-2xl border border-white/8 bg-[#111] p-4">
+        <div className="rounded-2xl border border-lime-500/30 bg-[#111] p-4 shadow-[0_0_20px_rgba(163,230,53,0.05)] transition-all focus-within:border-lime-500/50 focus-within:shadow-[0_0_25px_rgba(163,230,53,0.08)]">
           <textarea
             className="min-h-[96px] w-full resize-none bg-transparent text-sm leading-6 text-white/82 outline-none placeholder:text-white/28"
             onChange={(event) => onQuestionChange(event.target.value)}
