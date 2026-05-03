@@ -3,15 +3,35 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getOrigamiModel } from "@/lib/model";
-import { V0_PREVIEW_SYSTEM_PROMPT } from "@/lib/prompts";
-import { miniAppPreviewSchema } from "@/lib/tools";
+import { synthesizeMvpSiteCode } from "@/lib/mvp-site";
+import { MVP_SITE_SYSTEM_PROMPT } from "@/lib/prompts";
+import { mvpSiteSpecSchema } from "@/lib/tools";
+
+const currentArtifactSchema = z.object({
+  id: z.string().min(1),
+  appTitle: z.string().min(1),
+  summary: z.string().min(1),
+  sourceBrief: z.string().min(1),
+  customizationHistory: z.array(z.string().min(1)).default([]),
+  siteSpec: mvpSiteSpecSchema,
+});
 
 const requestSchema = z.object({
+  artifactId: z.string().min(1).optional(),
   sourceKind: z.enum(["text", "file", "repo", "pdf"]),
   sourceLabel: z.string().min(1),
   brief: z.string().min(1),
+  customizationPrompt: z.string().min(1).optional(),
+  currentArtifact: currentArtifactSchema.optional(),
 });
 
+const modelPayloadSchema = z.object({
+  appTitle: z.string().min(1),
+  summary: z.string().min(1),
+  siteSpec: mvpSiteSpecSchema,
+});
+
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
 function stripJsonFences(text: string) {
@@ -24,44 +44,87 @@ function stripJsonFences(text: string) {
   return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }
 
-async function generatePreviewWithModel(
+function buildPrompt(payload: z.infer<typeof requestSchema>) {
+  const baseSections = [
+    `Source kind: ${payload.sourceKind}`,
+    `Source label: ${payload.sourceLabel}`,
+    "",
+    "Return a JSON object that exactly matches this shape:",
+    `{
+  "appTitle": string,
+  "summary": string,
+  "siteSpec": {
+    "hero": { "eyebrow": string, "headline": string, "subheadline": string },
+    "stats": [{ "label": string, "value": string, "detail": string }],
+    "featureCards": [{ "title": string, "description": string, "bullets": string[] }],
+    "workflow": {
+      "title": string,
+      "steps": [{ "title": string, "description": string }]
+    },
+    "contentHighlights": {
+      "title": string,
+      "items": [{ "eyebrow": string, "title": string, "summary": string }]
+    },
+    "sourceProof": {
+      "title": string,
+      "items": [{ "label": string, "value": string, "detail": string }]
+    },
+    "cta": {
+      "title": string,
+      "description": string,
+      "primaryLabel": string,
+      "secondaryLabel": string
+    }
+  }
+}`,
+    "",
+    "SOURCE BRIEF START",
+    payload.brief,
+    "SOURCE BRIEF END",
+  ];
+
+  if (!payload.currentArtifact || !payload.customizationPrompt) {
+    return baseSections.join("\n");
+  }
+
+  return [
+    ...baseSections,
+    "",
+    "CURRENT SITE START",
+    JSON.stringify(
+      {
+        appTitle: payload.currentArtifact.appTitle,
+        summary: payload.currentArtifact.summary,
+        siteSpec: payload.currentArtifact.siteSpec,
+        customizationHistory: payload.currentArtifact.customizationHistory,
+      },
+      null,
+      2,
+    ),
+    "CURRENT SITE END",
+    "",
+    "CUSTOMIZATION REQUEST START",
+    payload.customizationPrompt,
+    "CUSTOMIZATION REQUEST END",
+  ].join("\n");
+}
+
+async function generateArtifactPayloadWithModel(
   model: ReturnType<typeof getOrigamiModel>,
   payload: z.infer<typeof requestSchema>,
 ) {
   const { text } = await generateText({
     model,
-    system: `${V0_PREVIEW_SYSTEM_PROMPT}
+    system: `${MVP_SITE_SYSTEM_PROMPT}
 
 Return valid JSON only. Do not wrap it in markdown fences.`,
-    prompt: [
-      `Source kind: ${payload.sourceKind}`,
-      `Source label: ${payload.sourceLabel}`,
-      "",
-      "Return a JSON object that exactly matches this shape:",
-      `{
-  "appTitle": string,
-  "pitch": string,
-  "targetUser": string,
-  "appType": string,
-  "designDirection": string,
-  "screenCards": [{ "name": string, "purpose": string, "keyElements": string[] }],
-  "primaryUserFlow": string[],
-  "componentPalette": string[],
-  "keyEntities": [{ "name": string, "role": string }],
-  "launchChecklist": string[],
-  "constraints": string[]
-}`,
-      "",
-      "SOURCE BRIEF START",
-      payload.brief,
-      "SOURCE BRIEF END",
-    ].join("\n"),
+    prompt: buildPrompt(payload),
   });
 
-  return miniAppPreviewSchema.parse(JSON.parse(stripJsonFences(text)));
+  return modelPayloadSchema.parse(JSON.parse(stripJsonFences(text)));
 }
 
-async function generatePreviewWithV0Api(payload: z.infer<typeof requestSchema>) {
+async function generateArtifactPayloadWithV0Api(payload: z.infer<typeof requestSchema>) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -78,35 +141,13 @@ async function generatePreviewWithV0Api(payload: z.infer<typeof requestSchema>) 
         messages: [
           {
             role: "system",
-            content: `${V0_PREVIEW_SYSTEM_PROMPT}
+            content: `${MVP_SITE_SYSTEM_PROMPT}
 
 Return valid JSON only. Do not wrap it in markdown fences.`,
           },
           {
             role: "user",
-            content: [
-              `Source kind: ${payload.sourceKind}`,
-              `Source label: ${payload.sourceLabel}`,
-              "",
-              "Return a JSON object that exactly matches this shape:",
-              `{
-  "appTitle": string,
-  "pitch": string,
-  "targetUser": string,
-  "appType": string,
-  "designDirection": string,
-  "screenCards": [{ "name": string, "purpose": string, "keyElements": string[] }],
-  "primaryUserFlow": string[],
-  "componentPalette": string[],
-  "keyEntities": [{ "name": string, "role": string }],
-  "launchChecklist": string[],
-  "constraints": string[]
-}`,
-              "",
-              "SOURCE BRIEF START",
-              payload.brief,
-              "SOURCE BRIEF END",
-            ].join("\n"),
+            content: buildPrompt(payload),
           },
         ],
       }),
@@ -117,11 +158,13 @@ Return valid JSON only. Do not wrap it in markdown fences.`,
       let detail = `${response.status} ${response.statusText}`;
 
       try {
-        const payload = (await response.json()) as { error?: { message?: string } | string };
+        const responsePayload = (await response.json()) as {
+          error?: { message?: string } | string;
+        };
         const message =
-          typeof payload.error === "string"
-            ? payload.error
-            : payload.error?.message;
+          typeof responsePayload.error === "string"
+            ? responsePayload.error
+            : responsePayload.error?.message;
         if (message) {
           detail = `${detail}: ${message}`;
         }
@@ -138,10 +181,10 @@ Return valid JSON only. Do not wrap it in markdown fences.`,
     const content = data.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error("The v0 API did not return a preview payload.");
+      throw new Error("The v0 API did not return an MVP payload.");
     }
 
-    return miniAppPreviewSchema.parse(JSON.parse(stripJsonFences(content)));
+    return modelPayloadSchema.parse(JSON.parse(stripJsonFences(content)));
   } finally {
     clearTimeout(timeout);
   }
@@ -149,40 +192,47 @@ Return valid JSON only. Do not wrap it in markdown fences.`,
 
 export async function POST(request: Request) {
   try {
-    if (!process.env.V0_API_KEY) {
-      return NextResponse.json(
-        {
-          error:
-            "V0_API_KEY is missing. Add it to generate the v0 MVP brief from this source.",
-        },
-        { status: 400 },
-      );
-    }
-
     const payload = requestSchema.parse(await request.json());
 
-    try {
-      const preview = await generatePreviewWithV0Api(payload);
-      return NextResponse.json(preview);
-    } catch (providerError) {
-      const providerMessage =
-        providerError instanceof Error ? providerError.message : "v0 preview failed";
+    let artifactPayload: z.infer<typeof modelPayloadSchema>;
 
-      const preview = await generatePreviewWithModel(getOrigamiModel(), payload);
-
-      return NextResponse.json({
-        ...preview,
-        _meta: {
-          fallback: true,
-          reason: providerMessage,
-        },
-      });
+    if (process.env.V0_API_KEY) {
+      try {
+        artifactPayload = await generateArtifactPayloadWithV0Api(payload);
+      } catch {
+        artifactPayload = await generateArtifactPayloadWithModel(getOrigamiModel(), payload);
+      }
+    } else {
+      artifactPayload = await generateArtifactPayloadWithModel(getOrigamiModel(), payload);
     }
+
+    const artifactId = crypto.randomUUID();
+    const artifact = {
+      id: payload.artifactId ?? payload.currentArtifact?.id ?? artifactId,
+      sourceKind: payload.sourceKind,
+      sourceLabel: payload.sourceLabel,
+      appTitle: artifactPayload.appTitle,
+      summary: artifactPayload.summary,
+      sourceBrief: payload.brief,
+      customizationHistory:
+        payload.customizationPrompt && payload.customizationPrompt.trim()
+          ? [
+              ...(payload.currentArtifact?.customizationHistory ?? []),
+              payload.customizationPrompt.trim(),
+            ]
+          : payload.currentArtifact?.customizationHistory ?? [],
+      siteSpec: artifactPayload.siteSpec,
+      code: synthesizeMvpSiteCode({
+        appTitle: artifactPayload.appTitle,
+        summary: artifactPayload.summary,
+        siteSpec: artifactPayload.siteSpec,
+      }),
+    };
+
+    return NextResponse.json(artifact);
   } catch (error) {
     const message =
-      error instanceof Error
-        ? error.message
-        : "Failed to generate the v0 MVP preview.";
+      error instanceof Error ? error.message : "Failed to generate the in-app MVP site.";
 
     return NextResponse.json({ error: message }, { status: 400 });
   }

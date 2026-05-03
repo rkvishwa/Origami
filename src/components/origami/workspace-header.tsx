@@ -11,12 +11,11 @@ type DashboardNavbarProps = {
   subtitle: string;
   interactiveBusy: boolean;
   v0Busy: boolean;
-  mcpBusy: boolean;
-  hasV0Key: boolean;
+  isRightPanelCollapsed: boolean;
+  onToggleRightPanel: () => void;
   onAnalyzeInteractive: () => void;
   onStopInteractive: () => void;
   onGenerateV0Preview: () => void;
-  onContinueInV0: () => void;
 };
 
 export function DashboardNavbar({
@@ -24,12 +23,11 @@ export function DashboardNavbar({
   subtitle,
   interactiveBusy,
   v0Busy,
-  mcpBusy,
-  hasV0Key,
+  isRightPanelCollapsed,
+  onToggleRightPanel,
   onAnalyzeInteractive,
   onStopInteractive,
   onGenerateV0Preview,
-  onContinueInV0,
 }: DashboardNavbarProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0A0A0A] backdrop-blur-2xl">
@@ -64,7 +62,7 @@ export function DashboardNavbar({
             ) : null}
             <button
               className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/84 transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed"
-              disabled={v0Busy || !hasV0Key}
+              disabled={v0Busy}
               onClick={onGenerateV0Preview}
               type="button"
             >
@@ -74,19 +72,6 @@ export function DashboardNavbar({
                 <Sparkles className="h-4 w-4" />
               )}
               v0 MVP
-            </button>
-            <button
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/84 transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed"
-              disabled={mcpBusy || !hasV0Key}
-              onClick={onContinueInV0}
-              type="button"
-            >
-              {mcpBusy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Continue in v0
             </button>
             <button
               className={cn(
@@ -104,6 +89,22 @@ export function DashboardNavbar({
                 <Sparkles className="h-4 w-4" />
               )}
               Generate interactive
+            </button>
+            <button
+              className={cn(
+                "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition",
+                isRightPanelCollapsed
+                  ? "border-white/10 bg-[#111] text-white/80 hover:bg-white/10 hover:text-white"
+                  : "border-lime-300/30 bg-lime-300/10 text-lime-100 hover:bg-lime-300/20"
+              )}
+              onClick={onToggleRightPanel}
+              type="button"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M15 3v18" />
+              </svg>
+              {isRightPanelCollapsed ? "Open Details" : "Close Details"}
             </button>
           </div>
         </div>

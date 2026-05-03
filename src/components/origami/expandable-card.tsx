@@ -26,21 +26,33 @@ export function ExpandableCard({
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let frameId = 0;
+
     const checkOverflow = () => {
-      if (contentRef.current) {
-        setIsOverflowing(contentRef.current.scrollHeight > maxHeight);
-      }
+      const nextValue = Boolean(
+        contentRef.current && contentRef.current.scrollHeight > maxHeight,
+      );
+
+      setIsOverflowing((current) => (current === nextValue ? current : nextValue));
     };
-    
-    // Initial check and set up observer for dynamic content
-    checkOverflow();
-    const observer = new ResizeObserver(checkOverflow);
+
+    const scheduleCheck = () => {
+      cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(checkOverflow);
+    };
+
+    scheduleCheck();
+    const observer = new ResizeObserver(scheduleCheck);
+
     if (contentRef.current) {
       observer.observe(contentRef.current);
     }
-    
-    return () => observer.disconnect();
-  }, [maxHeight, children]);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [maxHeight]);
 
   return (
     <>

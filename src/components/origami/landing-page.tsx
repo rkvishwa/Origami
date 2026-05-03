@@ -47,7 +47,7 @@ export function LandingPage() {
             The Universal Interactive Engine
           </h1>
           <p className="text-lg md:text-xl text-[#A1A1AA] max-w-[600px] mx-auto leading-relaxed">
-            Upload a PDF, scan a repository, or paste raw text. Origami breaks it down, streams an interactive explanation, and drafts a v0-ready MVP concept in seconds.
+            Upload a PDF, scan a repository, or paste raw text. Origami breaks it down, streams an interactive explanation, and generates a copyable single-page MVP route in seconds.
           </p>
         </div>
 

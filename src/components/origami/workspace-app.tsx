@@ -1,19 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import { Loader2 } from "lucide-react";
 
 import { OrigamiCanvas } from "@/components/origami/canvas";
 import { DocumentInsight } from "@/components/origami/document-insight";
+import {
+  MvpSitePanel,
+  type MvpSiteGenerationState,
+} from "@/components/origami/mvp-site-panel";
 import { PackageDashboard } from "@/components/origami/package-dashboard";
 import { PdfBreakdown } from "@/components/origami/pdf-breakdown";
 import { RepoOverview } from "@/components/origami/repo-overview";
+import { SourceQuestionBox } from "@/components/origami/source-question-box";
 import { SourcePanel } from "@/components/origami/source-panel";
-import { V0PreviewPanel } from "@/components/origami/v0-preview";
 import { DashboardNavbar } from "@/components/origami/workspace-header";
+import { buildMvpArtifactHref, persistMvpArtifact } from "@/lib/mvp-site";
 import { buildPdfFallbackInsight } from "@/lib/pdf";
 import { summarizePackageManifest } from "@/lib/repo-insights";
 import { sampleSources } from "@/lib/samples";
@@ -21,40 +26,29 @@ import { uploadStore } from "@/lib/upload-store";
 import {
   buildRepoOverviewText,
   createOrigamiMessagePayload,
-  createSourceBrief,
+  createMvpSourceBrief,
   getSelectedRepoTab,
   getSourceStats,
 } from "@/lib/source";
 import type {
   ArchitectureGraphOutput,
   BaseTextSourceDocument,
-  MiniAppPreview,
+  MvpSiteArtifact,
   PdfInsightOutput,
   RepoFileDescriptor,
   RepoSourceDocument,
   RepoTabAnalysisState,
   SourceDocument,
-  V0McpSession,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-type V0PreviewState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; preview: MiniAppPreview }
-  | { status: "error"; error: string };
-
-type V0McpState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ready"; session: V0McpSession }
-  | { status: "error"; error: string };
-
-type WorkspaceAppProps = {
-  hasV0Key: boolean;
-};
-
 const DEFAULT_SAMPLE = sampleSources[1];
+
+type SourceQuestionTurn = {
+  id: string;
+  question: string;
+  answer: string;
+};
 
 function buildRepoAnalysisKey(source: RepoSourceDocument, path: string) {
   return `${source.sourceUrl}::${source.repo.branch}::${path}`;
@@ -121,7 +115,8 @@ function LoadingCard({ label }: { label: string }) {
   );
 }
 
-export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
+export function WorkspaceApp() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
@@ -140,11 +135,19 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   const [repoTabAnalyses, setRepoTabAnalyses] = useState<Record<string, RepoTabAnalysisState>>(
     {},
   );
-  const [v0PreviewState, setV0PreviewState] = useState<V0PreviewState>({
+  const [mvpSiteState, setMvpSiteState] = useState<MvpSiteGenerationState>({
     status: "idle",
   });
-  const [v0McpState, setV0McpState] = useState<V0McpState>({ status: "idle" });
+  const [workspaceQuestion, setWorkspaceQuestion] = useState("");
+  const [workspaceQuestionState, setWorkspaceQuestionState] = useState<{
+    status: "idle" | "loading" | "error";
+    error?: string | null;
+  }>({ status: "idle", error: null });
+  const [workspaceQuestionHistory, setWorkspaceQuestionHistory] = useState<
+    SourceQuestionTurn[]
+  >([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"source" | "breakdown" | "v0">("source");
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [repoOverviewGraphs, setRepoOverviewGraphs] = useState<
     Record<string, ArchitectureGraphOutput>
   >({});
@@ -311,8 +314,10 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   function replaceSource(nextSource: SourceDocument, message?: string) {
     setSource(nextSource);
     setMessages([]);
-    setV0PreviewState({ status: "idle" });
-    setV0McpState({ status: "idle" });
+    setMvpSiteState({ status: "idle" });
+    setWorkspaceQuestion("");
+    setWorkspaceQuestionHistory([]);
+    setWorkspaceQuestionState({ status: "idle", error: null });
     setSurfaceError(null);
     setSurfaceMessage(message ?? null);
     activeRepoOverviewRequestKey.current = null;
@@ -506,13 +511,12 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     }
   }
 
-  async function handleGenerateV0Preview() {
+  async function handleGenerateMvpSite() {
     if (!source) {
       return;
     }
 
-    setV0PreviewState({ status: "loading" });
-    setV0McpState({ status: "idle" });
+    setMvpSiteState({ status: "loading" });
 
     try {
       const response = await fetch("/api/v0-preview", {
@@ -521,55 +525,68 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
         body: JSON.stringify({
           sourceKind: source.kind,
           sourceLabel: source.label,
-          brief: createSourceBrief(source),
+          brief: createMvpSourceBrief(source, { pdfInsight }),
         }),
       });
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Could not generate the v0 MVP brief.");
+        throw new Error(payload.error ?? "Could not generate the in-app MVP site.");
       }
 
-      setV0PreviewState({ status: "ready", preview: payload as MiniAppPreview });
+      const artifact = payload as MvpSiteArtifact;
+      persistMvpArtifact(artifact);
+      setMvpSiteState({ status: "ready", artifact });
+      router.push(buildMvpArtifactHref(artifact.id));
     } catch (nextError) {
       const message =
         nextError instanceof Error
           ? nextError.message
-          : "Could not generate the v0 MVP brief.";
-      setV0PreviewState({ status: "error", error: message });
+          : "Could not generate the in-app MVP site.";
+      setMvpSiteState({ status: "error", error: message });
     }
   }
 
-  async function handleContinueInV0() {
-    if (!source) {
+  async function handleAskWorkspaceQuestion() {
+    if (!source || !workspaceQuestion.trim()) {
       return;
     }
 
-    setV0McpState({ status: "loading" });
+    setWorkspaceQuestionState({ status: "loading", error: null });
 
     try {
-      const response = await fetch("/api/v0-mcp/session", {
+      const response = await fetch("/api/source-qa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sourceKind: source.kind,
           sourceLabel: source.label,
-          brief: createSourceBrief(source),
+          brief: createMvpSourceBrief(source, { pdfInsight }),
+          question: workspaceQuestion.trim(),
         }),
       });
       const payload = await response.json();
 
       if (!response.ok) {
-        throw new Error(payload.error ?? "Could not create the v0 MCP session.");
+        throw new Error(payload.error ?? "Could not answer the source question.");
       }
 
-      setV0McpState({ status: "ready", session: payload as V0McpSession });
-    } catch (nextError) {
-      const message =
-        nextError instanceof Error
-          ? nextError.message
-          : "Could not create the v0 MCP session.";
-      setV0McpState({ status: "error", error: message });
+      setWorkspaceQuestionHistory((current) => [
+        {
+          id: crypto.randomUUID(),
+          question: workspaceQuestion.trim(),
+          answer: payload.answer as string,
+        },
+        ...current,
+      ]);
+      setWorkspaceQuestion("");
+      setWorkspaceQuestionState({ status: "idle", error: null });
+    } catch (error) {
+      setWorkspaceQuestionState({
+        status: "error",
+        error:
+          error instanceof Error ? error.message : "Could not answer the source question.",
+      });
     }
   }
 
@@ -602,14 +619,14 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
 
   if (!source) {
     return (
-      <div className="flex h-screen overflow-hidden bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
-        <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+      <div className="flex min-h-screen bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
+        <div className="flex-1 flex flex-col min-h-screen min-w-0">
           <header className="sticky top-0 z-40 h-[72px] border-b border-white/10 bg-[#0A0A0A] flex items-center px-4 md:px-6 gap-4">
              <div className="h-10 w-10 rounded-lg border border-white/10 bg-white/5 animate-pulse" />
              <div className="h-5 w-48 bg-white/5 rounded animate-pulse" />
           </header>
-          <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 sm:p-6 min-h-0">
-            <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-[#0A0A0A] p-4 items-center justify-center min-h-0">
+          <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 sm:p-6">
+            <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-[#0A0A0A] p-4 items-center justify-center min-h-[600px]">
               {isIntakeBusy ? (
                 <div className="flex flex-col items-center justify-center gap-3">
                   <div className="flex items-center gap-2 text-lime-300">
@@ -775,7 +792,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
+    <div className="flex min-h-screen bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
       <input
         accept=".pdf,.txt,.md,.mdx,.json,.yaml,.yml,.csv,.ts,.tsx,.js,.jsx"
         className="hidden"
@@ -792,7 +809,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
 
       {/* Left Sidebar (Repo Tabs) */}
       {activeSource.kind === "repo" && (
-        <div className="w-64 border-r border-white/10 flex flex-col h-full bg-[#0A0A0A] overflow-y-auto shrink-0 hidden md:flex">
+        <div className="w-64 border-r border-white/10 flex flex-col sticky top-0 h-screen bg-[#0A0A0A] overflow-y-auto shrink-0 hidden md:flex">
           <div className="p-4 border-b border-white/10 shrink-0">
             <div className="text-[10px] uppercase tracking-[0.24em] text-white/44 mb-1">
               Repository
@@ -833,21 +850,20 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
         <DashboardNavbar
           title="The Universal Interactive Engine"
           subtitle="Generate interactive canvases from source"
           interactiveBusy={status === "submitted" || status === "streaming"}
-          v0Busy={v0PreviewState.status === "loading"}
-          mcpBusy={v0McpState.status === "loading"}
-          hasV0Key={hasV0Key}
+          v0Busy={mvpSiteState.status === "loading"}
+          isRightPanelCollapsed={isRightPanelCollapsed}
+          onToggleRightPanel={() => setIsRightPanelCollapsed(!isRightPanelCollapsed)}
           onAnalyzeInteractive={() => void handleAnalyzeInteractive()}
           onStopInteractive={stop}
-          onGenerateV0Preview={() => void handleGenerateV0Preview()}
-          onContinueInV0={() => void handleContinueInV0()}
+          onGenerateV0Preview={() => void handleGenerateMvpSite()}
         />
 
-        <div className="flex-1 overflow-auto p-4 sm:p-6 flex flex-col gap-4">
+        <div className="flex-1 p-4 sm:p-6 flex flex-col gap-4">
           {(surfaceMessage || surfaceError) && (
             <div className="flex flex-col gap-2 shrink-0">
               {surfaceMessage && (
@@ -863,9 +879,20 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
             </div>
           )}
 
-          <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0">
+          <div className="flex-1 flex flex-col xl:flex-row gap-4">
             {/* Main Column: Massive Canvas */}
-            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <div className="flex-1 flex flex-col min-w-0">
+              <div className="mb-4 shrink-0">
+                <SourceQuestionBox
+                  error={workspaceQuestionState.error}
+                  history={workspaceQuestionHistory}
+                  onQuestionChange={setWorkspaceQuestion}
+                  onSubmit={() => void handleAskWorkspaceQuestion()}
+                  question={workspaceQuestion}
+                  sourceLabel={selectedSourceView.title}
+                  status={workspaceQuestionState.status}
+                />
+              </div>
               <OrigamiCanvas
                 chatError={error?.message}
                 messages={messages}
@@ -875,87 +902,119 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
               />
             </div>
 
-            {/* Right Column: Context & Breakdown (Tabbed) */}
-            <div className="w-full xl:w-[420px] flex flex-col gap-4 shrink-0 overflow-y-auto pr-1 pb-4">
-              
-              <div className="flex rounded-lg border border-white/10 bg-[#0A0A0A] p-1 shrink-0">
-                <button
-                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "source" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
-                  onClick={() => setRightSidebarTab("source")}
-                >
-                  Source
-                </button>
-                <button
-                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "breakdown" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
-                  onClick={() => setRightSidebarTab("breakdown")}
-                >
-                  Breakdown
-                </button>
-                <button
-                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "v0" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
-                  onClick={() => setRightSidebarTab("v0")}
-                >
-                  v0 MVP
-                </button>
-              </div>
-
-              {rightSidebarTab === "source" && (
-                <SourcePanel
-                  fetchedAt={activeSource.fetchedAt}
-                  isDraggingFile={isDraggingFile}
-                  isEditable={selectedSourceView.isEditable}
-                  kindLabel={selectedSourceView.kindLabel}
-                  onDragEnter={() => setIsDraggingFile(true)}
-                  onDragLeave={() => setIsDraggingFile(false)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    setIsDraggingFile(false);
-                    const file = event.dataTransfer.files?.[0];
-                    if (file) {
-                      void handleFileUpload(file);
-                    }
-                  }}
-                  onSourceChange={(value) => {
-                    if (activeSource.kind === "text" || activeSource.kind === "file") {
-                      setSource({ ...activeSource, text: value });
-                      setStandaloneInsightState({ status: "idle" });
-                    }
-                  }}
-                  pdfPreviewUrl={selectedSourceView.pdfPreviewUrl}
-                  sourceStats={sourceStats}
-                  sourceText={selectedSourceView.text}
-                  subtitle={selectedSourceView.subtitle}
-                  title={selectedSourceView.title}
-                />
-              )}
-
-              {rightSidebarTab === "breakdown" && (
-                <PanelFrame
-                  subtitle="Overview cards, file-level breakdowns, manifest dashboards, or PDF summaries."
-                  title="Breakdown"
-                >
-                  {renderBreakdownContent()}
-                </PanelFrame>
-              )}
-
-              {rightSidebarTab === "v0" && (
-                <PanelFrame
-                  subtitle="Generate a deterministic mini-app brief with the official v0 model."
-                  title="v0 MVP"
-                >
-                  <V0PreviewPanel
-                    hasV0Key={hasV0Key}
-                    mcpState={v0McpState}
-                    onContinueInV0={() => void handleContinueInV0()}
-                    onGenerate={() => void handleGenerateV0Preview()}
-                    previewState={v0PreviewState}
-                    sourceLabel={selectedSourceView.title}
-                  />
-                </PanelFrame>
-              )}
-            </div>
           </div>
+        </div>
+      </div>
+
+      {/* Overlay Backdrop */}
+      {!isRightPanelCollapsed && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity" 
+          onClick={() => setIsRightPanelCollapsed(true)} 
+        />
+      )}
+
+      {/* Right Drawer */}
+      <div
+        className={cn(
+          "fixed top-0 right-0 z-50 h-screen w-full sm:w-[540px] bg-[#0A0A0A] border-l border-white/10 shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col",
+          isRightPanelCollapsed ? "translate-x-full" : "translate-x-0"
+        )}
+      >
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 shrink-0 bg-[#0A0A0A]">
+          <h2 className="text-sm font-semibold text-white/90">Details & Analysis</h2>
+          <button
+            onClick={() => setIsRightPanelCollapsed(true)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-white/10 text-white/50 hover:text-white transition"
+          >
+            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11.7816 4.03157C12.0062 3.80702 12.0062 3.44295 11.7816 3.2184C11.5571 2.99385 11.193 2.99385 10.9685 3.2184L7.50005 6.68682L4.03164 3.2184C3.80708 2.99385 3.44301 2.99385 3.21846 3.2184C2.99391 3.44295 2.99391 3.80702 3.21846 4.03157L6.68688 7.49999L3.21846 10.9684C2.99391 11.193 2.99391 11.557 3.21846 11.7816C3.44301 12.0061 3.80708 12.0061 4.03164 11.7816L7.50005 8.31316L10.9685 11.7816C11.193 12.0061 11.5571 12.0061 11.7816 11.7816C12.0062 11.557 12.0062 11.193 11.7816 10.9684L8.31322 7.49999L11.7816 4.03157Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path>
+            </svg>
+          </button>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex border-b border-white/10 px-6 pt-3 gap-6 shrink-0 bg-[#0A0A0A]">
+          <button
+            className={cn("pb-3 text-sm font-medium transition border-b-2", rightSidebarTab === "source" ? "border-lime-300 text-lime-300" : "border-transparent text-white/50 hover:text-white/80")}
+            onClick={() => setRightSidebarTab("source")}
+          >
+            Source
+          </button>
+          <button
+            className={cn("pb-3 text-sm font-medium transition border-b-2", rightSidebarTab === "breakdown" ? "border-lime-300 text-lime-300" : "border-transparent text-white/50 hover:text-white/80")}
+            onClick={() => setRightSidebarTab("breakdown")}
+          >
+            Breakdown
+          </button>
+          <button
+            className={cn("pb-3 text-sm font-medium transition border-b-2", rightSidebarTab === "v0" ? "border-lime-300 text-lime-300" : "border-transparent text-white/50 hover:text-white/80")}
+            onClick={() => setRightSidebarTab("v0")}
+          >
+            v0 MVP
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 bg-[#000]">
+          {rightSidebarTab === "source" && (
+            <SourcePanel
+              fetchedAt={activeSource.fetchedAt}
+              isDraggingFile={isDraggingFile}
+              isEditable={selectedSourceView.isEditable}
+              kindLabel={selectedSourceView.kindLabel}
+              onDragEnter={() => setIsDraggingFile(true)}
+              onDragLeave={() => setIsDraggingFile(false)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDraggingFile(false);
+                const file = event.dataTransfer.files?.[0];
+                if (file) {
+                  void handleFileUpload(file);
+                }
+              }}
+              onSourceChange={(value) => {
+                if (activeSource.kind === "text" || activeSource.kind === "file") {
+                  setSource({ ...activeSource, text: value });
+                  setStandaloneInsightState({ status: "idle" });
+                }
+              }}
+              pdfPreviewUrl={selectedSourceView.pdfPreviewUrl}
+              sourceStats={sourceStats}
+              sourceText={selectedSourceView.text}
+              subtitle={selectedSourceView.subtitle}
+              title={selectedSourceView.title}
+            />
+          )}
+
+          {rightSidebarTab === "breakdown" && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-2">
+                <h3 className="text-lg font-semibold text-white">Breakdown Analysis</h3>
+                <p className="text-sm text-white/60">Overview cards, file-level breakdowns, manifest dashboards, or PDF summaries.</p>
+              </div>
+              {renderBreakdownContent()}
+            </div>
+          )}
+
+          {rightSidebarTab === "v0" && (
+            <div className="flex flex-col gap-6">
+              <div className="flex flex-col gap-2">
+                <h3 className="text-lg font-semibold text-white">v0 MVP Generation</h3>
+                <p className="text-sm text-white/60">Generate a grounded single-page MVP route with copyable React/Tailwind code.</p>
+              </div>
+              <MvpSitePanel
+                generationState={mvpSiteState}
+                onGenerate={() => void handleGenerateMvpSite()}
+                onOpenArtifact={() => {
+                  if (mvpSiteState.status === "ready") {
+                    router.push(buildMvpArtifactHref(mvpSiteState.artifact.id));
+                  }
+                }}
+                sourceLabel={selectedSourceView.title}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

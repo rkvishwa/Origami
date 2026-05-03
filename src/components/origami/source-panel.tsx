@@ -65,7 +65,7 @@ export function SourcePanel({
   return (
     <section
       className={cn(
-        "flex min-h-[400px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]",
+        "flex h-[800px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]",
         isDraggingFile ? "border-lime-300/40 shadow-[0_0_0_1px_rgba(204,255,0,0.3)]" : "",
       )}
       onDragEnter={onDragEnter}
@@ -119,29 +119,28 @@ export function SourcePanel({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">Lines</div>
-            <div className="mt-2 text-lg font-semibold text-white/88">{sourceStats.lines}</div>
+        <div className="mt-5 flex flex-wrap items-center gap-5 sm:gap-6 rounded-lg border border-white/5 bg-white/[0.02] px-5 py-3.5">
+          <div className="flex flex-col gap-1">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-white/40">Lines</div>
+            <div className="text-base font-medium text-white/90">{sourceStats.lines}</div>
           </div>
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">Words</div>
-            <div className="mt-2 text-lg font-semibold text-white/88">{sourceStats.words}</div>
+          <div className="h-6 w-px bg-white/10" />
+          <div className="flex flex-col gap-1">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-white/40">Words</div>
+            <div className="text-base font-medium text-white/90">{sourceStats.words}</div>
           </div>
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-[0.22em] text-white/38">
-              Characters
-            </div>
-            <div className="mt-2 text-lg font-semibold text-white/88">
-              {sourceStats.characters}
-            </div>
+          <div className="h-6 w-px bg-white/10" />
+          <div className="flex flex-col gap-1">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-white/40">Characters</div>
+            <div className="text-base font-medium text-white/90">{sourceStats.characters}</div>
           </div>
-          <div className="rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
-            <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-white/38">
-              <Clock3 className="h-3.5 w-3.5" />
+          <div className="h-6 w-px bg-white/10 hidden sm:block" />
+          <div className="flex flex-col gap-1 w-full sm:w-auto mt-2 sm:mt-0">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.22em] text-white/40">
+              <Clock3 className="h-3 w-3" />
               Updated
             </div>
-            <div className="mt-2 text-sm font-medium text-white/84">
+            <div className="text-sm font-medium text-white/80">
               {formatTimestamp(fetchedAt)}
             </div>
           </div>
@@ -159,6 +158,7 @@ export function SourcePanel({
               className="h-full w-full"
               src={pdfPreviewUrl}
               title={`${title} preview`}
+              allowFullScreen
             />
           </div>
         ) : isEditable ? (

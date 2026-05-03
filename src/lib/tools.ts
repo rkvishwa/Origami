@@ -71,29 +71,65 @@ export const pdfInsightOutputSchema = z.object({
   recommendedActions: z.array(z.string().min(1)).min(1).max(5),
 });
 
-const miniAppPreviewScreenSchema = z.object({
-  name: z.string().min(1),
-  purpose: z.string().min(1),
-  keyElements: z.array(z.string().min(1)).min(2).max(5),
+const mvpSiteHeroSchema = z.object({
+  eyebrow: z.string().min(1),
+  headline: z.string().min(1),
+  subheadline: z.string().min(1),
 });
 
-const miniAppPreviewEntitySchema = z.object({
-  name: z.string().min(1),
-  role: z.string().min(1),
+const mvpSiteStatSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1),
+  detail: z.string().min(1),
 });
 
-export const miniAppPreviewSchema = z.object({
-  appTitle: z.string().min(1),
-  pitch: z.string().min(1),
-  targetUser: z.string().min(1),
-  appType: z.string().min(1),
-  designDirection: z.string().min(1),
-  screenCards: z.array(miniAppPreviewScreenSchema).min(3).max(5),
-  primaryUserFlow: z.array(z.string().min(1)).min(3).max(6),
-  componentPalette: z.array(z.string().min(1)).min(4).max(8),
-  keyEntities: z.array(miniAppPreviewEntitySchema).min(2).max(6),
-  launchChecklist: z.array(z.string().min(1)).min(3).max(6),
-  constraints: z.array(z.string().min(1)).min(2).max(5),
+const mvpSiteFeatureCardSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+  bullets: z.array(z.string().min(1)).min(2).max(4),
+});
+
+const mvpSiteWorkflowStepSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+});
+
+const mvpSiteHighlightSchema = z.object({
+  eyebrow: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+});
+
+const mvpSiteProofItemSchema = z.object({
+  label: z.string().min(1),
+  value: z.string().min(1),
+  detail: z.string().min(1),
+});
+
+const mvpSiteCtaSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
+  primaryLabel: z.string().min(1),
+  secondaryLabel: z.string().min(1),
+});
+
+export const mvpSiteSpecSchema = z.object({
+  hero: mvpSiteHeroSchema,
+  stats: z.array(mvpSiteStatSchema).min(3).max(5),
+  featureCards: z.array(mvpSiteFeatureCardSchema).min(3).max(6),
+  workflow: z.object({
+    title: z.string().min(1),
+    steps: z.array(mvpSiteWorkflowStepSchema).min(3).max(5),
+  }),
+  contentHighlights: z.object({
+    title: z.string().min(1),
+    items: z.array(mvpSiteHighlightSchema).min(3).max(5),
+  }),
+  sourceProof: z.object({
+    title: z.string().min(1),
+    items: z.array(mvpSiteProofItemSchema).min(3).max(5),
+  }),
+  cta: mvpSiteCtaSchema,
 });
 
 const calculatorParameterSchema = z.object({

@@ -172,36 +172,77 @@ export type PdfInsightOutput = {
   recommendedActions: string[];
 };
 
-export type MiniAppPreviewScreen = {
-  name: string;
-  purpose: string;
-  keyElements: string[];
+export type MvpSiteHero = {
+  eyebrow: string;
+  headline: string;
+  subheadline: string;
 };
 
-export type MiniAppPreviewEntity = {
-  name: string;
-  role: string;
+export type MvpSiteStat = {
+  label: string;
+  value: string;
+  detail: string;
 };
 
-export type MiniAppPreview = {
+export type MvpSiteFeatureCard = {
+  title: string;
+  description: string;
+  bullets: string[];
+};
+
+export type MvpSiteWorkflowStep = {
+  title: string;
+  description: string;
+};
+
+export type MvpSiteHighlight = {
+  eyebrow: string;
+  title: string;
+  summary: string;
+};
+
+export type MvpSiteProofItem = {
+  label: string;
+  value: string;
+  detail: string;
+};
+
+export type MvpSiteCta = {
+  title: string;
+  description: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+};
+
+export type MvpSiteSpec = {
+  hero: MvpSiteHero;
+  stats: MvpSiteStat[];
+  featureCards: MvpSiteFeatureCard[];
+  workflow: {
+    title: string;
+    steps: MvpSiteWorkflowStep[];
+  };
+  contentHighlights: {
+    title: string;
+    items: MvpSiteHighlight[];
+  };
+  sourceProof: {
+    title: string;
+    items: MvpSiteProofItem[];
+  };
+  cta: MvpSiteCta;
+};
+
+export type MvpSiteArtifact = {
+  id: string;
+  sourceKind: SourceKind;
+  sourceLabel: string;
   appTitle: string;
-  pitch: string;
-  targetUser: string;
-  appType: string;
-  designDirection: string;
-  screenCards: MiniAppPreviewScreen[];
-  primaryUserFlow: string[];
-  componentPalette: string[];
-  keyEntities: MiniAppPreviewEntity[];
-  launchChecklist: string[];
-  constraints: string[];
-};
-
-export type V0McpSession = {
-  chatId: string;
-  chatUrl: string;
-  toolName: string;
-  followUpSent: boolean;
+  summary: string;
+  sourceBrief: string;
+  customizationHistory: string[];
+  siteSpec: MvpSiteSpec;
+  code: string;
 };
 
 export type CalculatorParameter = {

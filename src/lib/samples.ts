@@ -203,7 +203,7 @@ The desired output is a simple guided simulator that helps an on-call operator c
     id: "pdf-brief",
     eyebrow: "PDF breakdown demo",
     title: "Quarterly climate resilience brief",
-    description: "Shows PDF extraction, section cards, metrics, and a v0-ready mini-app brief.",
+    description: "Shows PDF extraction, section cards, metrics, and a generated MVP site route.",
     source: {
       kind: "pdf",
       label: "climate-resilience-brief.pdf",

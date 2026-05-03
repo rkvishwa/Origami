@@ -145,8 +145,10 @@ export function OrigamiCanvas({
   }
 
   return (
-    <section className="flex h-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]">
-      <div className="border-b border-white/10 px-5 py-4">
+    <section className="flex h-[800px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]">
+      <div className="flex-1 overflow-auto p-4">{content}</div>
+
+      <div className="border-t border-white/10 bg-[#0A0A0A] px-5 py-4 shrink-0">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
@@ -184,8 +186,6 @@ export function OrigamiCanvas({
           </div>
         ) : null}
       </div>
-
-      <div className="flex-1 overflow-auto p-4">{content}</div>
     </section>
   );
 }

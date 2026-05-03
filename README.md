@@ -8,7 +8,9 @@ Origami is a hackathon-first "Doc-to-App Engine" built with Next.js and the Verc
 - a deterministic package dashboard for `package.json` and key manifests
 - a scenario simulator for branching playbooks and if/then manuals
 - a PDF breakdown view with extracted sections, notable metrics, and source-aware follow-up actions
-- a `v0 MVP` pane that drafts a mini-app brief with the official v0 model and can hand off to the v0 MCP server
+- a `v0 MVP` pane that generates an in-app single-page MVP route with copyable React/Tailwind code
+- a source Q&A box in the workspace for asking grounded questions about the active PDF, repo, or text
+- a customization prompt bar on generated MVP pages for revising the design in place
 
 ## Stack
 
@@ -16,8 +18,7 @@ Origami is a hackathon-first "Doc-to-App Engine" built with Next.js and the Verc
 - Tailwind CSS
 - Vercel AI SDK with `streamText`
 - OpenAI via `@ai-sdk/openai`
-- v0 Model API via `@ai-sdk/vercel`
-- v0 MCP handoff via `@modelcontextprotocol/sdk`
+- optional v0 Model API access via `https://api.v0.dev/v1/chat/completions`
 - React Flow
 - Recharts
 - Zod
@@ -67,7 +68,7 @@ OPENAI_MODEL=your-model-or-deployment-name
 
 `GITHUB_TOKEN` is optional, but recommended if you plan to scan multiple public repositories and want to avoid stricter unauthenticated GitHub API rate limits.
 
-`V0_API_KEY` enables the `v0 MVP` pane and the `Continue in v0` MCP handoff. Without it, the rest of Origami still works.
+`V0_API_KEY` is optional. When present, Origami will try the v0 model first for MVP site generation and fall back to the configured OpenAI-compatible model if needed.
 
 ## Useful commands
 
@@ -84,5 +85,5 @@ npm run build
 - Repo dashboards show an `Overview` tab first, then one tab per included markdown or manifest file.
 - Architecture nodes include evidence-backed explanations, related nodes, and file shortcuts in a persistent inspector.
 - PDF mode supports text-based PDFs only. Scanned or image-only PDFs are intentionally out of scope for this MVP.
-- The root route `/` now opens the full workspace directly, while `/workspace` remains available as a compatibility alias.
+- Generated MVP pages open inside Origami at `/workspace/mvp/[artifactId]` and are stored in browser-local storage so they survive refreshes and same-browser tabs.
 - The AI only returns typed tool payloads. The UI stays deterministic and React-rendered.

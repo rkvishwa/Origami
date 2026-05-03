@@ -229,9 +229,7 @@ async function fetchRecursiveTree(owner: string, repo: string, branch: string) {
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
     {
       headers: getGitHubHeaders(),
-      next: {
-        revalidate: 1800,
-      },
+      cache: "no-store",
     },
   );
 

@@ -11,7 +11,7 @@ export default function WorkspacePage() {
         </div>
       }
     >
-      <WorkspaceApp hasV0Key={Boolean(process.env.V0_API_KEY)} />
+      <WorkspaceApp />
     </Suspense>
   );
 }

@@ -1,10 +1,12 @@
 import type {
+  PdfInsightOutput,
   PdfSourceDocument,
   RepoFileDescriptor,
   RepoSourceDocument,
   SourceDocument,
   SourceStats,
 } from "@/lib/types";
+import { getRepoManifestInsights, getRepoSignalBadges } from "@/lib/repo-insights";
 
 const SOURCE_CHAR_LIMIT = 18000;
 const REPO_FILE_CHAR_LIMIT = 3200;
@@ -106,6 +108,35 @@ function buildRepoOverviewDigest(source: RepoSourceDocument) {
   ].join("\n");
 }
 
+function buildRepoMvpDigest(source: RepoSourceDocument) {
+  const manifestInsights = getRepoManifestInsights(source)
+    .slice(0, 3)
+    .map((insight) =>
+      [
+        `Manifest: ${insight.path}`,
+        `Package: ${insight.packageName ?? insight.title}`,
+        `Frameworks: ${insight.detectedFrameworks.join(", ") || "None detected"}`,
+        `Signals: ${insight.runtimeSignals.join(", ") || "None detected"}`,
+        `Key dependencies: ${
+          insight.keyDependencies.map((dependency) => `${dependency.name}@${dependency.version}`).join(", ") ||
+          "None detected"
+        }`,
+      ].join("\n"),
+    )
+    .join("\n\n");
+  const signalBadges = getRepoSignalBadges(source).join(", ");
+
+  return [
+    buildRepoOverviewDigest(source),
+    "",
+    "Repository signals:",
+    signalBadges || "No clear framework or runtime signals detected.",
+    "",
+    "Manifest summaries:",
+    manifestInsights || "No manifest summaries available.",
+  ].join("\n");
+}
+
 export function buildRepoFileDigest(
   source: RepoSourceDocument,
   tab: RepoFileDescriptor,
@@ -147,6 +178,31 @@ function buildPdfDigest(source: PdfSourceDocument) {
   ].join("\n");
 }
 
+function buildPdfMvpDigest(source: PdfSourceDocument, insight?: PdfInsightOutput | null) {
+  const notableMetrics = (insight?.notableMetrics ?? [])
+    .map((metric) => `- ${metric.label}: ${metric.value} (${metric.context})`)
+    .join("\n");
+  const sectionBreakdown = (insight?.sectionBreakdown ?? [])
+    .map(
+      (section) =>
+        `- ${section.heading} [${section.pageRange}]: ${section.summary}`,
+    )
+    .join("\n");
+
+  return [
+    buildPdfDigest(source),
+    "",
+    "Visual MVP notes:",
+    insight ? insight.summary : "Use the extracted sections to shape the strongest public-facing narrative.",
+    "",
+    "Notable metrics:",
+    notableMetrics || "No explicit metrics were confidently extracted.",
+    "",
+    "Section breakdown:",
+    sectionBreakdown || "No section breakdown available.",
+  ].join("\n");
+}
+
 export function createSourceBrief(source: SourceDocument) {
   if (source.kind === "repo") {
     const selectedTab = getSelectedRepoTab(source);
@@ -176,6 +232,23 @@ export function createSourceBrief(source: SourceDocument) {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+export function createMvpSourceBrief(
+  source: SourceDocument,
+  options?: {
+    pdfInsight?: PdfInsightOutput | null;
+  },
+) {
+  if (source.kind === "repo") {
+    return buildRepoMvpDigest(source);
+  }
+
+  if (source.kind === "pdf") {
+    return buildPdfMvpDigest(source, options?.pdfInsight);
+  }
+
+  return createSourceBrief(source);
 }
 
 export function createOrigamiMessagePayload(source: SourceDocument) {
