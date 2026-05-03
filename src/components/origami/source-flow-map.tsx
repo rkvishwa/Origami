@@ -23,7 +23,6 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
   type Edge,
-  type NodeChange,
   type Node,
   type NodeProps,
 } from "reactflow";

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Loader2, MessageSquareText, Sparkles } from "lucide-react";
 
 import { SourceFlowMap } from "@/components/origami/source-flow-map";
@@ -38,6 +39,14 @@ export function SourceQuestionBox({
   sourceFlowState,
   onRefreshSourceFlow,
 }: SourceQuestionBoxProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (status === "loading" && scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [status, history.length]);
+
   return (
     <section className="rounded-xl border border-white/10 bg-[#0A0A0A]">
       <div className="border-b border-white/10 px-5 py-4">
@@ -90,11 +99,16 @@ export function SourceQuestionBox({
               type="button"
             >
               {status === "loading" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Thinking…
+                </>
               ) : (
-                <Sparkles className="h-4 w-4" />
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Ask Origami
+                </>
               )}
-              Ask Origami
             </button>
           </div>
         </div>
@@ -104,13 +118,6 @@ export function SourceQuestionBox({
             {error}
           </div>
         ) : null}
-
-        <SourceFlowMap
-          contextKey={sourceContextKey}
-          onRefresh={onRefreshSourceFlow}
-          renderKey={sourceFlowRenderKey}
-          state={sourceFlowState}
-        />
 
         {history.length ? (
           <div className="space-y-3">
@@ -135,6 +142,20 @@ export function SourceQuestionBox({
             ))}
           </div>
         ) : null}
+
+        {status === "loading" && (
+          <div ref={scrollRef} className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-4 text-sm text-white/50 animate-pulse">
+            <Loader2 className="h-4 w-4 animate-spin text-lime-500" />
+            Origami is processing your request...
+          </div>
+        )}
+
+        <SourceFlowMap
+          contextKey={sourceContextKey}
+          onRefresh={onRefreshSourceFlow}
+          renderKey={sourceFlowRenderKey}
+          state={sourceFlowState}
+        />
       </div>
     </section>
   );
