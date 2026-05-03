@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     model: getOrigamiModel(),
     system: ORIGAMI_SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
-    stopWhen: stepCountIs(5),
+    stopWhen: stepCountIs(1),
     tools: origamiTools,
   });
 

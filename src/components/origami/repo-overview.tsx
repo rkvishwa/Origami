@@ -20,7 +20,7 @@ export function RepoOverview({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_320px]">
+      <div className="grid gap-4 ">
         <div className="rounded-xl border border-white/10 bg-[#111] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -47,7 +47,7 @@ export function RepoOverview({
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="mt-5 grid gap-3 grid-cols-2">
             <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
               <div className="flex items-center gap-2 text-xs text-white/50">
                 <FolderKanban className="h-4 w-4" />
@@ -139,7 +139,7 @@ export function RepoOverview({
           <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
             Package and config insights
           </div>
-          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 grid-cols-2">
             {manifestInsights.slice(0, 3).map((insight) => (
               <div
                 className="rounded-xl border border-white/8 bg-[#0A0A0A] p-4"

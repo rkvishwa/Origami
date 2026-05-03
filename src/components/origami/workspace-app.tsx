@@ -14,10 +14,10 @@ import { RepoOverview } from "@/components/origami/repo-overview";
 import { SourcePanel } from "@/components/origami/source-panel";
 import { V0PreviewPanel } from "@/components/origami/v0-preview";
 import { DashboardNavbar } from "@/components/origami/workspace-header";
-import { ExpandableCard } from "@/components/origami/expandable-card";
 import { buildPdfFallbackInsight } from "@/lib/pdf";
 import { summarizePackageManifest } from "@/lib/repo-insights";
 import { sampleSources } from "@/lib/samples";
+import { uploadStore } from "@/lib/upload-store";
 import {
   buildRepoOverviewText,
   createOrigamiMessagePayload,
@@ -103,10 +103,8 @@ function PanelFrame({
         <div className="text-[10px] uppercase tracking-[0.25em] text-[#A1A1AA]">{title}</div>
         <p className="mt-2 text-sm leading-6 text-[#71717A]">{subtitle}</p>
       </div>
-      <div className="p-4">
-        <ExpandableCard title={title} maxHeight={360} className="border-none bg-transparent">
-          {children}
-        </ExpandableCard>
+      <div className="max-h-[560px] overflow-auto p-4">
+        {children}
       </div>
     </section>
   );
@@ -128,12 +126,11 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initializedRef = useRef(false);
   const activeRepoOverviewRequestKey = useRef<string | null>(null);
+  const autoAnalyzedOverviewKeyRef = useRef<string | null>(null);
   const [source, setSource] = useState<SourceDocument | null>(null);
-  const [_githubUrl, setGithubUrl] = useState("");
-  const [pastedText, setPastedText] = useState("");
   const [surfaceMessage, setSurfaceMessage] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
-  const [_isIntakeBusy, setIsIntakeBusy] = useState(false);
+  const [isIntakeBusy, setIsIntakeBusy] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfInsight, setPdfInsight] = useState<PdfInsightOutput | null>(null);
@@ -147,6 +144,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     status: "idle",
   });
   const [v0McpState, setV0McpState] = useState<V0McpState>({ status: "idle" });
+  const [rightSidebarTab, setRightSidebarTab] = useState<"source" | "breakdown" | "v0">("source");
   const [repoOverviewGraphs, setRepoOverviewGraphs] = useState<
     Record<string, ArchitectureGraphOutput>
   >({});
@@ -189,29 +187,26 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
       return;
     }
 
-    if (uploadSource === "upload" && typeof window !== "undefined") {
-      const name = window.sessionStorage.getItem("origami_upload_name") || "Uploaded file";
-      const text = window.sessionStorage.getItem("origami_upload_text") || "";
-      const nextSource: BaseTextSourceDocument = {
-        kind: "file",
-        label: name,
-        text,
-        fetchedAt: new Date().toISOString(),
-      };
-      replaceSource(nextSource, "Loaded uploaded file.");
+    if (uploadSource === "upload-store") {
+      const file = uploadStore.file;
+      uploadStore.file = null;
+      if (file) {
+        void handleFileUpload(file);
+      }
       return;
     }
 
-    if (uploadSource === "pdf-upload" && typeof window !== "undefined") {
-      const rawPayload = window.sessionStorage.getItem("origami_pdf_payload");
-      if (rawPayload) {
-        try {
-          const payload = JSON.parse(rawPayload);
-          setPdfInsight(payload.insight as PdfInsightOutput);
-          replaceSource(payload.source as SourceDocument, `Loaded ${payload.source?.fileName ?? "PDF"}.`);
-        } catch {
-          // fall through to default sample if malformed
-        }
+    if (uploadSource === "pasted-store") {
+      const text = uploadStore.pastedText;
+      uploadStore.pastedText = null;
+      if (text) {
+        const nextSource: BaseTextSourceDocument = {
+          kind: "file",
+          label: "Pasted source text",
+          text,
+          fetchedAt: new Date().toISOString(),
+        };
+        replaceSource(nextSource, "Loaded pasted source text.");
       }
       return;
     }
@@ -249,9 +244,15 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     }
 
     const overviewKey = `${source.sourceUrl}::${source.repo.branch}`;
+    if (repoOverviewGraphs[overviewKey]) {
+      activeRepoOverviewRequestKey.current = null;
+      autoAnalyzedOverviewKeyRef.current = overviewKey;
+      return;
+    }
+
     if (
-      repoOverviewGraphs[overviewKey] ||
       activeRepoOverviewRequestKey.current === overviewKey ||
+      autoAnalyzedOverviewKeyRef.current === overviewKey ||
       status === "streaming" ||
       status === "submitted"
     ) {
@@ -259,9 +260,11 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     }
 
     activeRepoOverviewRequestKey.current = overviewKey;
+    autoAnalyzedOverviewKeyRef.current = overviewKey;
     setMessages([]);
     void sendMessage({ text: createOrigamiMessagePayload(source) });
-  }, [messages.length, repoOverviewGraphs, sendMessage, setMessages, source, status]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoOverviewGraphs, source, status]);
 
   useEffect(() => {
     const toolPart = findLatestToolPart(messages);
@@ -314,6 +317,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     setSurfaceError(null);
     setSurfaceMessage(message ?? null);
     activeRepoOverviewRequestKey.current = null;
+    autoAnalyzedOverviewKeyRef.current = null;
     setStandaloneInsightState({ status: "idle" });
 
     if (nextSource.kind !== "pdf") {
@@ -459,23 +463,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     await sendMessage({ text: createOrigamiMessagePayload(source) });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function handleUsePastedText() {
-    if (!pastedText.trim()) {
-      setSurfaceError("Paste some source text first.");
-      return;
-    }
 
-    replaceSource(
-      {
-        kind: "text",
-        label: "Pasted source",
-        text: pastedText,
-        fetchedAt: new Date().toISOString(),
-      },
-      "Loaded pasted source text.",
-    );
-  }
 
   async function handleFileUpload(file: File) {
     setIsIntakeBusy(true);
@@ -621,8 +609,35 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
 
   if (!source) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-white/60">
-        Initializing Origami workspace…
+      <div className="flex h-screen overflow-hidden bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
+        <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
+          <header className="sticky top-0 z-40 h-[72px] border-b border-white/10 bg-[#0A0A0A] flex items-center px-4 md:px-6 gap-4">
+             <div className="h-10 w-10 rounded-lg border border-white/10 bg-white/5 animate-pulse" />
+             <div className="h-5 w-48 bg-white/5 rounded animate-pulse" />
+          </header>
+          <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 sm:p-6 min-h-0">
+            <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-[#0A0A0A] p-4 items-center justify-center min-h-0">
+              {isIntakeBusy ? (
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <div className="flex items-center gap-2 text-lime-300">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <span className="text-lg font-medium">Extracting content…</span>
+                  </div>
+                  <div className="h-1 w-48 overflow-hidden rounded-full bg-white/10 mt-2">
+                    <div className="h-full w-full animate-[shimmer_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-lime-300/60 to-transparent bg-[length:200%_100%]" />
+                  </div>
+                </div>
+              ) : (
+                <span className="text-white/60 animate-pulse">Initializing Origami workspace…</span>
+              )}
+            </div>
+            <div className="w-full xl:w-[420px] shrink-0 rounded-xl border border-white/10 bg-[#0A0A0A] p-4 animate-pulse flex flex-col gap-4">
+               <div className="h-8 w-full bg-white/5 rounded" />
+               <div className="h-32 w-full bg-white/5 rounded" />
+               <div className="h-32 w-full bg-white/5 rounded" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -867,58 +882,86 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
               />
             </div>
 
-            {/* Right Column: Context & Breakdown (Scrollable Sidebar) */}
+            {/* Right Column: Context & Breakdown (Tabbed) */}
             <div className="w-full xl:w-[420px] flex flex-col gap-4 shrink-0 overflow-y-auto pr-1 pb-4">
-              <SourcePanel
-                fetchedAt={activeSource.fetchedAt}
-                isDraggingFile={isDraggingFile}
-                isEditable={selectedSourceView.isEditable}
-                kindLabel={selectedSourceView.kindLabel}
-                onDragEnter={() => setIsDraggingFile(true)}
-                onDragLeave={() => setIsDraggingFile(false)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setIsDraggingFile(false);
-                  const file = event.dataTransfer.files?.[0];
-                  if (file) {
-                    void handleFileUpload(file);
-                  }
-                }}
-                onSourceChange={(value) => {
-                  if (activeSource.kind === "text" || activeSource.kind === "file") {
-                    setSource({ ...activeSource, text: value });
-                    setPastedText(value);
-                    setStandaloneInsightState({ status: "idle" });
-                  }
-                }}
-                pdfPreviewUrl={selectedSourceView.pdfPreviewUrl}
-                sourceStats={sourceStats}
-                sourceText={selectedSourceView.text}
-                subtitle={selectedSourceView.subtitle}
-                title={selectedSourceView.title}
-              />
+              
+              <div className="flex rounded-lg border border-white/10 bg-[#0A0A0A] p-1 shrink-0">
+                <button
+                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "source" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
+                  onClick={() => setRightSidebarTab("source")}
+                >
+                  Source
+                </button>
+                <button
+                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "breakdown" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
+                  onClick={() => setRightSidebarTab("breakdown")}
+                >
+                  Breakdown
+                </button>
+                <button
+                  className={cn("flex-1 rounded-md py-1.5 text-xs font-medium transition", rightSidebarTab === "v0" ? "bg-[#111] text-white shadow-sm border border-white/5" : "text-white/50 hover:text-white/80")}
+                  onClick={() => setRightSidebarTab("v0")}
+                >
+                  v0 MVP
+                </button>
+              </div>
 
-              <PanelFrame
-                subtitle="Overview cards, file-level breakdowns, manifest dashboards, or PDF summaries."
-                title="Breakdown"
-              >
-                {renderBreakdownContent()}
-              </PanelFrame>
-
-              <PanelFrame
-                subtitle="Generate a deterministic mini-app brief with the official v0 model."
-                title="v0 MVP"
-              >
-                <V0PreviewPanel
-                  hasV0Key={hasV0Key}
-                  mcpState={v0McpState}
-                  onContinueInV0={() => void handleContinueInV0()}
-                  onGenerate={() => void handleGenerateV0Preview()}
-                  previewState={v0PreviewState}
-                  sourceLabel={selectedSourceView.title}
+              {rightSidebarTab === "source" && (
+                <SourcePanel
+                  fetchedAt={activeSource.fetchedAt}
+                  isDraggingFile={isDraggingFile}
+                  isEditable={selectedSourceView.isEditable}
+                  kindLabel={selectedSourceView.kindLabel}
+                  onDragEnter={() => setIsDraggingFile(true)}
+                  onDragLeave={() => setIsDraggingFile(false)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsDraggingFile(false);
+                    const file = event.dataTransfer.files?.[0];
+                    if (file) {
+                      void handleFileUpload(file);
+                    }
+                  }}
+                  onSourceChange={(value) => {
+                    if (activeSource.kind === "text" || activeSource.kind === "file") {
+                      setSource({ ...activeSource, text: value });
+                      setPastedText(value);
+                      setStandaloneInsightState({ status: "idle" });
+                    }
+                  }}
+                  pdfPreviewUrl={selectedSourceView.pdfPreviewUrl}
+                  sourceStats={sourceStats}
+                  sourceText={selectedSourceView.text}
+                  subtitle={selectedSourceView.subtitle}
+                  title={selectedSourceView.title}
                 />
-              </PanelFrame>
+              )}
+
+              {rightSidebarTab === "breakdown" && (
+                <PanelFrame
+                  subtitle="Overview cards, file-level breakdowns, manifest dashboards, or PDF summaries."
+                  title="Breakdown"
+                >
+                  {renderBreakdownContent()}
+                </PanelFrame>
+              )}
+
+              {rightSidebarTab === "v0" && (
+                <PanelFrame
+                  subtitle="Generate a deterministic mini-app brief with the official v0 model."
+                  title="v0 MVP"
+                >
+                  <V0PreviewPanel
+                    hasV0Key={hasV0Key}
+                    mcpState={v0McpState}
+                    onContinueInV0={() => void handleContinueInV0()}
+                    onGenerate={() => void handleGenerateV0Preview()}
+                    previewState={v0PreviewState}
+                    sourceLabel={selectedSourceView.title}
+                  />
+                </PanelFrame>
+              )}
             </div>
           </div>
         </div>

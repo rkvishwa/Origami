@@ -20,7 +20,7 @@ Behavior rules:
 - For graph and document outputs, always include every schema field. Use empty strings for missing short text fields, empty arrays when there are no related items, and null for focusGraph when no mini-graph is warranted.
 - Keep calculator outputs to 1-3 inputs and explain any approximation in the summary.
 - Keep simulators to 4-7 steps with 2-3 options per step.
-- After the tool call, add a short plain-language explanation of what the user is seeing and any assumptions or simplifications you made.`;
+- End the response immediately after the tool call. Do not add any follow-up prose, commentary, or summary text.`;
 
 export const DOCUMENT_INSIGHT_SYSTEM_PROMPT = `You are Origami's document analyst.
 

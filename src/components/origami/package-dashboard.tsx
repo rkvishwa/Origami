@@ -17,7 +17,7 @@ export function PackageDashboard({ insight }: PackageDashboardProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_300px]">
+      <div className="grid gap-4 ">
         <div className="rounded-xl border border-white/10 bg-[#111] p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -37,7 +37,7 @@ export function PackageDashboard({ insight }: PackageDashboardProps) {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid gap-3 grid-cols-2 grid-cols-2">
             <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
               <div className="flex items-center gap-2 text-xs text-white/50">
                 <TerminalSquare className="h-4 w-4" />
@@ -101,7 +101,7 @@ export function PackageDashboard({ insight }: PackageDashboardProps) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid gap-4 ">
         <div className="rounded-xl border border-white/10 bg-[#111] p-5">
           <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
             Key scripts
