@@ -2,20 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Loader2, PlusCircle, Sparkles } from "lucide-react";
-
-import { cn } from "@/lib/utils";
+import { ArrowLeft, Loader2, PlusCircle } from "lucide-react";
 
 type DashboardNavbarProps = {
   title: string;
   subtitle: string;
   interactiveBusy: boolean;
-  v0Busy: boolean;
-  isRightPanelCollapsed: boolean;
-  onToggleRightPanel: () => void;
-  onAnalyzeInteractive: () => void;
   onStopInteractive: () => void;
-  onGenerateV0Preview: () => void;
   onNewWorkspace?: () => void;
 };
 
@@ -23,12 +16,7 @@ export function DashboardNavbar({
   title,
   subtitle,
   interactiveBusy,
-  v0Busy,
-  isRightPanelCollapsed,
-  onToggleRightPanel,
-  onAnalyzeInteractive,
   onStopInteractive,
-  onGenerateV0Preview,
   onNewWorkspace,
 }: DashboardNavbarProps) {
   return (
@@ -73,56 +61,8 @@ export function DashboardNavbar({
                 Stop stream
               </button>
             ) : null}
-            <button
-              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/84 transition hover:border-white/20 hover:bg-white/[0.08] disabled:cursor-not-allowed"
-              disabled={v0Busy}
-              onClick={onGenerateV0Preview}
-              type="button"
-            >
-              {v0Busy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              v0 MVP
-            </button>
-            <button
-              className={cn(
-                "inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition",
-                "bg-gradient-to-r from-lime-300 to-lime-400 hover:opacity-92",
-                "disabled:cursor-not-allowed disabled:opacity-60",
-              )}
-              disabled={interactiveBusy}
-              onClick={onAnalyzeInteractive}
-              type="button"
-            >
-              {interactiveBusy ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Generate interactive
-            </button>
-            <button
-              className={cn(
-                "inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition",
-                isRightPanelCollapsed
-                  ? "border-white/10 bg-[#111] text-white/80 hover:bg-white/10 hover:text-white"
-                  : "border-lime-300/30 bg-lime-300/10 text-lime-100 hover:bg-lime-300/20"
-              )}
-              onClick={onToggleRightPanel}
-              type="button"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M15 3v18" />
-              </svg>
-              {isRightPanelCollapsed ? "Open Details" : "Close Details"}
-            </button>
           </div>
         </div>
-
-
       </div>
     </header>
   );

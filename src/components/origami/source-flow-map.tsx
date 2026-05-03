@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRightCircle,
   FileText,
@@ -10,15 +11,19 @@ import {
   Network,
   RefreshCw,
   Route,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import ReactFlow, {
   Background,
-  Controls,
+  Handle,
   MarkerType,
   Position,
+  SelectionMode,
   useEdgesState,
   useNodesState,
   type Edge,
+  type NodeChange,
   type Node,
   type NodeProps,
 } from "reactflow";
@@ -31,6 +36,7 @@ import type {
 import { cn } from "@/lib/utils";
 
 type SourceFlowMapProps = {
+  contextKey: string | null;
   renderKey: number;
   state: SourceFlowState;
   onRefresh: () => void;
@@ -83,7 +89,7 @@ function FlowNodeCard({
   return (
     <div
       className={cn(
-        "min-w-[240px] rounded-2xl border bg-gradient-to-br p-4 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm transition-all",
+        "min-w-[240px] cursor-grab rounded-2xl border bg-gradient-to-br p-4 shadow-[0_18px_40px_rgba(0,0,0,0.24)] backdrop-blur-sm transition-all active:cursor-grabbing",
         style.border,
         style.bg,
         selected ? "ring-2 ring-lime-300/55" : "ring-1 ring-white/8",
@@ -103,6 +109,20 @@ function FlowNodeCard({
         </div>
       </div>
       <p className="mt-3 text-xs leading-5 text-white/66">{data.node.summary}</p>
+      <Handle
+        id={TARGET_HANDLE_ID}
+        type="target"
+        position={Position.Left}
+        className="!h-3 !w-3 !border !border-white/15 !bg-[#0A0A0A] !opacity-0"
+        isConnectable={false}
+      />
+      <Handle
+        id={SOURCE_HANDLE_ID}
+        type="source"
+        position={Position.Right}
+        className="!h-3 !w-3 !border !border-white/15 !bg-[#0A0A0A] !opacity-0"
+        isConnectable={false}
+      />
     </div>
   );
 }
@@ -110,6 +130,9 @@ function FlowNodeCard({
 const nodeTypes = {
   sourceFlowCard: FlowNodeCard,
 };
+
+const SOURCE_HANDLE_ID = "out";
+const TARGET_HANDLE_ID = "in";
 
 function getFlowFromState(state: SourceFlowState) {
   if (state.status === "ready") {
@@ -145,23 +168,33 @@ function createFlowNodes(flow: SourceFlowOutput): Node<SourceFlowCardNodeData>[]
 function createFlowEdges(flow: SourceFlowOutput): Edge[] {
   return flow.edges.map((edge) => ({
     ...edge,
+    type: "smoothstep",
+    sourceHandle: SOURCE_HANDLE_ID,
+    targetHandle: TARGET_HANDLE_ID,
     animated: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#ccff00" },
-    labelStyle: { fill: "#d4d4d8", fontSize: 11 },
-    labelBgStyle: { fill: "rgba(10,10,10,0.88)" },
+    label: undefined,
+    markerEnd: { type: MarkerType.ArrowClosed, color: "rgba(255,255,255,0.36)" },
+    pathOptions: {
+      offset: 28,
+      borderRadius: 18,
+    },
     style: {
-      stroke: "rgba(255,255,255,0.22)",
-      strokeWidth: 1.4,
+      stroke: "rgba(255,255,255,0.16)",
+      strokeWidth: 1.2,
     },
   }));
 }
 
 export function SourceFlowMap({
+  contextKey,
   renderKey,
   state,
   onRefresh,
 }: SourceFlowMapProps) {
+  const [isFullScreen, setIsFullScreen] = useState(false);
   const flow = getFlowFromState(state);
+  const lastContextKeyRef = useRef<string | null>(null);
+  const previousNodePositionsRef = useRef<Record<string, { x: number; y: number }>>({});
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(
     flow?.defaultSelectedNodeId ?? flow?.nodes[0]?.id,
   );
@@ -180,27 +213,68 @@ export function SourceFlowMap({
     [flow, renderKey],
   );
 
+  const interactiveEdges = useMemo(() => {
+    if (!selectedNodeId) {
+      return edges;
+    }
+
+    return edges.map((edge) => {
+      const isSelectedEdge =
+        edge.source === selectedNodeId || edge.target === selectedNodeId;
+
+      return {
+        ...edge,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isSelectedEdge ? "#ccff00" : "rgba(255,255,255,0.36)",
+        },
+        style: {
+          stroke: isSelectedEdge ? "#ccff00" : "rgba(255,255,255,0.16)",
+          strokeWidth: isSelectedEdge ? 2.2 : 1.2,
+        },
+      };
+    });
+  }, [edges, selectedNodeId]);
+
+  useEffect(() => {
+    if (contextKey !== lastContextKeyRef.current) {
+      previousNodePositionsRef.current = {};
+      lastContextKeyRef.current = contextKey;
+    }
+  }, [contextKey]);
+
   useEffect(() => {
     if (!flow) {
       setSelectedNodeId(undefined);
       setNodes([]);
       setEdges([]);
+      previousNodePositionsRef.current = {};
       return;
     }
 
-    setSelectedNodeId(flow.defaultSelectedNodeId ?? flow.nodes[0]?.id);
-    setNodes(createFlowNodes(flow));
-    setEdges(createFlowEdges(flow));
+    const previousPositions = previousNodePositionsRef.current;
+    const canReusePositions =
+      Object.keys(previousPositions).length > 0 &&
+      flow.nodes.every((node) => previousPositions[node.id]);
+    const nextFlow = canReusePositions
+      ? {
+          ...flow,
+          nodes: flow.nodes.map((node) => ({
+            ...node,
+            position: previousPositions[node.id] ?? node.position,
+          })),
+        }
+      : flow;
+
+    setSelectedNodeId(nextFlow.defaultSelectedNodeId ?? nextFlow.nodes[0]?.id);
+    setNodes(createFlowNodes(nextFlow));
+    setEdges(createFlowEdges(nextFlow));
+    previousNodePositionsRef.current = Object.fromEntries(
+      nextFlow.nodes.map((node) => [node.id, node.position]),
+    );
   }, [flow, flowIdentity, setEdges, setNodes]);
 
-  useEffect(() => {
-    setNodes((currentNodes) =>
-      currentNodes.map((node) => ({
-        ...node,
-        selected: node.id === selectedNodeId,
-      })),
-    );
-  }, [selectedNodeId, setNodes]);
+
 
   const selectedNode = useMemo(
     () => flow?.nodes.find((node) => node.id === selectedNodeId) ?? flow?.nodes[0],
@@ -210,8 +284,11 @@ export function SourceFlowMap({
   const isLoading = state.status === "loading";
   const error = state.status === "error" ? state.error : null;
 
-  return (
-    <section className="rounded-2xl border border-white/8 bg-white/[0.03]">
+  const content = (
+    <section className={cn(
+      "border border-white/8 bg-white/[0.03] transition-all",
+      isFullScreen ? "fixed inset-0 z-[100] flex flex-col rounded-none bg-[#000]" : "rounded-2xl"
+    )}>
       <div className="border-b border-white/10 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -239,6 +316,16 @@ export function SourceFlowMap({
             >
               {isLoading ? "Loading" : error ? "Needs retry" : flow ? "Ready" : "Waiting"}
             </span>
+            {flow && !error && !isLoading ? (
+              <button
+                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0A0A0A] px-4 py-2 text-xs font-medium text-white/72 transition hover:border-lime-300/30 hover:bg-lime-300/10 hover:text-lime-50"
+                onClick={() => setIsFullScreen(!isFullScreen)}
+                type="button"
+              >
+                {isFullScreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+                {isFullScreen ? "Exit Full Screen" : "Full Screen"}
+              </button>
+            ) : null}
             <button
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#0A0A0A] px-4 py-2 text-xs font-medium text-white/72 transition hover:border-lime-300/30 hover:bg-lime-300/10 hover:text-lime-50 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isLoading}
@@ -256,7 +343,7 @@ export function SourceFlowMap({
         </div>
       </div>
 
-      <div className="p-4">
+      <div className={cn("p-4", isFullScreen ? "flex-1 min-h-0 flex flex-col" : "")}>
         {!flow ? (
           <div
             className={cn(
@@ -280,35 +367,41 @@ export function SourceFlowMap({
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_300px]">
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0A0A0A]">
+          <div className={cn("grid gap-4", isFullScreen ? "xl:grid-cols-[minmax(0,1.2fr)_400px] flex-1 h-full min-h-0" : "xl:grid-cols-[minmax(0,1.2fr)_300px]")}>
+            <div className="flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0A0A0A]">
               <div className="border-b border-white/10 px-5 py-3 text-xs uppercase tracking-[0.22em] text-white/40">
-                Drag cards to rearrange the view
+                Drag cards with left click. Use wheel or trackpad to pan.
               </div>
-              <div className="relative h-[380px] w-full panel-grid md:h-[420px]">
+              <div className={cn("relative w-full panel-grid flex-1", isFullScreen ? "h-full min-h-[500px]" : "h-[380px] md:h-[420px]")}>
                 <ReactFlow
                   key={flowIdentity}
-                  edges={edges}
+                  edges={interactiveEdges}
                   fitView
                   nodes={nodes}
+                  nodesDraggable
+                  nodesConnectable={false}
                   nodeTypes={nodeTypes}
+                  onNodeDragStop={(_, node) => {
+                    previousNodePositionsRef.current = {
+                      ...previousNodePositionsRef.current,
+                      [node.id]: node.position,
+                    };
+                  }}
                   onNodeClick={(_, node) => setSelectedNodeId(node.id)}
                   onNodesChange={onNodesChange}
-                  panOnDrag
+                  panOnDrag={false}
+                  panOnScroll
+                  selectionMode={SelectionMode.Partial}
+                  selectionOnDrag={false}
+                  zoomOnScroll={false}
                   proOptions={{ hideAttribution: true }}
                 >
                   <Background color="rgba(255,255,255,0.06)" gap={24} />
-                  <Controls
-                    className="!border-white/10 !bg-black/70 !text-white"
-                    position="bottom-right"
-                    showInteractive={false}
-                    showFitView={false}
-                  />
                 </ReactFlow>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-[#0A0A0A] p-6">
+            <div className={cn("rounded-2xl border border-white/10 bg-[#0A0A0A] p-6 overflow-y-auto", isFullScreen ? "h-full" : "")}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-xs uppercase tracking-[0.24em] text-white/40">
@@ -351,7 +444,12 @@ export function SourceFlowMap({
                         <button
                           className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/78 transition hover:border-lime-300/35 hover:bg-lime-300/10 hover:text-lime-50"
                           key={relatedNode.id}
-                          onClick={() => setSelectedNodeId(relatedNode.id)}
+                          onClick={() => {
+                            setSelectedNodeId(relatedNode.id);
+                            setNodes((nds) =>
+                              nds.map((n) => ({ ...n, selected: n.id === relatedNode.id }))
+                            );
+                          }}
                           type="button"
                         >
                           {relatedNode.label}
@@ -405,4 +503,10 @@ export function SourceFlowMap({
       </div>
     </section>
   );
+
+  if (isFullScreen && typeof document !== "undefined") {
+    return createPortal(content, document.body);
+  }
+
+  return content;
 }

@@ -31,24 +31,172 @@ export const sourceFlowOutputSchema = z.object({
   edges: z.array(sourceFlowEdgeSchema).min(3).max(12),
 });
 
+const HORIZONTAL_GAP = 360;
+const VERTICAL_GAP = 210;
+
+function compareNodeLabels(
+  left: z.infer<typeof sourceFlowNodeSchema>,
+  right: z.infer<typeof sourceFlowNodeSchema>,
+) {
+  return left.label.localeCompare(right.label, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function getLayoutRootIds(
+  flow: z.infer<typeof sourceFlowOutputSchema>,
+  incomingCounts: Map<string, number>,
+) {
+  const nodeIds = new Set(flow.nodes.map((node) => node.id));
+  const zeroIncoming = flow.nodes
+    .filter((node) => (incomingCounts.get(node.id) ?? 0) === 0)
+    .sort(compareNodeLabels)
+    .map((node) => node.id);
+  const remaining = flow.nodes
+    .filter((node) => !zeroIncoming.includes(node.id))
+    .sort((left, right) => {
+      const incomingDifference =
+        (incomingCounts.get(left.id) ?? 0) - (incomingCounts.get(right.id) ?? 0);
+
+      return incomingDifference || compareNodeLabels(left, right);
+    })
+    .map((node) => node.id);
+
+  if (
+    flow.defaultSelectedNodeId &&
+    nodeIds.has(flow.defaultSelectedNodeId) &&
+    (incomingCounts.get(flow.defaultSelectedNodeId) ?? 0) === 0
+  ) {
+    return [
+      flow.defaultSelectedNodeId,
+      ...zeroIncoming.filter((nodeId) => nodeId !== flow.defaultSelectedNodeId),
+      ...remaining,
+    ];
+  }
+
+  return [...zeroIncoming, ...remaining];
+}
+
+function buildStageMap(
+  flow: z.infer<typeof sourceFlowOutputSchema>,
+  incomingCounts: Map<string, number>,
+  outgoing: Map<string, string[]>,
+) {
+  const stageByNodeId = new Map<string, number>();
+  const layoutRoots = getLayoutRootIds(flow, incomingCounts);
+
+  for (const rootId of layoutRoots) {
+    if (stageByNodeId.has(rootId)) {
+      continue;
+    }
+
+    const queue: string[] = [rootId];
+    stageByNodeId.set(rootId, 0);
+
+    while (queue.length > 0) {
+      const currentId = queue.shift() as string;
+      const currentStage = stageByNodeId.get(currentId) ?? 0;
+
+      for (const nextId of outgoing.get(currentId) ?? []) {
+        const nextStage = currentStage + 1;
+        const previousStage = stageByNodeId.get(nextId);
+
+        if (previousStage === undefined || nextStage > previousStage) {
+          stageByNodeId.set(nextId, nextStage);
+        }
+
+        if (previousStage === undefined) {
+          queue.push(nextId);
+        }
+      }
+    }
+  }
+
+  return stageByNodeId;
+}
+
 export function normalizeSourceFlow(
   flow: z.infer<typeof sourceFlowOutputSchema>,
 ) {
-  const columnBuckets = new Map<
-    number,
-    Array<z.infer<typeof sourceFlowNodeSchema>>
-  >();
+  const nodeIds = new Set(flow.nodes.map((node) => node.id));
+  const filteredEdges = flow.edges.filter(
+    (edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target),
+  );
+  const incomingCounts = new Map(flow.nodes.map((node) => [node.id, 0]));
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, string[]>();
 
-  for (const node of flow.nodes) {
-    const bucket = columnBuckets.get(node.column) ?? [];
-    bucket.push(node);
-    columnBuckets.set(node.column, bucket);
+  for (const edge of filteredEdges) {
+    incomingCounts.set(edge.target, (incomingCounts.get(edge.target) ?? 0) + 1);
+
+    const nextOutgoing = outgoing.get(edge.source) ?? [];
+    if (!nextOutgoing.includes(edge.target)) {
+      nextOutgoing.push(edge.target);
+      outgoing.set(edge.source, nextOutgoing);
+    }
+
+    const nextIncoming = incoming.get(edge.target) ?? [];
+    if (!nextIncoming.includes(edge.source)) {
+      nextIncoming.push(edge.source);
+      incoming.set(edge.target, nextIncoming);
+    }
   }
 
-  const nodeIds = new Set(flow.nodes.map((node) => node.id));
+  const stageByNodeId = buildStageMap(flow, incomingCounts, outgoing);
+  const stageBuckets = new Map<number, Array<z.infer<typeof sourceFlowNodeSchema>>>();
+
+  for (const node of flow.nodes) {
+    const stage = stageByNodeId.get(node.id) ?? node.column ?? 0;
+    const bucket = stageBuckets.get(stage) ?? [];
+    bucket.push(node);
+    stageBuckets.set(stage, bucket);
+  }
+
+  const sortedStages = Array.from(stageBuckets.keys()).sort((left, right) => left - right);
+  const previousStageOrder = new Map<string, number>();
+  const positionByNodeId = new Map<string, { x: number; y: number }>();
+
+  for (const stage of sortedStages) {
+    const stageNodes = [...(stageBuckets.get(stage) ?? [])];
+    stageNodes.sort((left, right) => {
+      const leftIncoming = incoming.get(left.id) ?? [];
+      const rightIncoming = incoming.get(right.id) ?? [];
+      const leftParentOrder = leftIncoming.length
+        ? Math.min(...leftIncoming.map((nodeId) => previousStageOrder.get(nodeId) ?? Number.MAX_SAFE_INTEGER))
+        : Number.MAX_SAFE_INTEGER;
+      const rightParentOrder = rightIncoming.length
+        ? Math.min(...rightIncoming.map((nodeId) => previousStageOrder.get(nodeId) ?? Number.MAX_SAFE_INTEGER))
+        : Number.MAX_SAFE_INTEGER;
+      const leftFallback = left.column ?? stage;
+      const rightFallback = right.column ?? stage;
+
+      return (
+        leftParentOrder - rightParentOrder ||
+        leftFallback - rightFallback ||
+        compareNodeLabels(left, right)
+      );
+    });
+
+    stageNodes.forEach((node, index) => {
+      previousStageOrder.set(node.id, index);
+      positionByNodeId.set(node.id, {
+        x: stage * HORIZONTAL_GAP,
+        y: index * VERTICAL_GAP,
+      });
+    });
+  }
+
   const nodes = flow.nodes.map((node) => {
-    const columnNodes = columnBuckets.get(node.column) ?? [];
-    const index = columnNodes.findIndex((columnNode) => columnNode.id === node.id);
+    const fallbackStage = node.column ?? 0;
+    const fallbackIndex = [...flow.nodes]
+      .filter((candidate) => (candidate.column ?? 0) === fallbackStage)
+      .sort(compareNodeLabels)
+      .findIndex((candidate) => candidate.id === node.id);
+    const position = positionByNodeId.get(node.id) ?? {
+      x: fallbackStage * HORIZONTAL_GAP,
+      y: fallbackIndex * VERTICAL_GAP,
+    };
 
     return {
       ...node,
@@ -66,10 +214,7 @@ export function normalizeSourceFlow(
       relatedNodeIds: node.relatedNodeIds.filter((relatedNodeId) =>
         nodeIds.has(relatedNodeId),
       ),
-      position: {
-        x: node.column * 300,
-        y: index * 190,
-      },
+      position,
     };
   });
 
@@ -80,9 +225,7 @@ export function normalizeSourceFlow(
         ? flow.defaultSelectedNodeId
         : nodes[0]?.id,
     nodes,
-    edges: flow.edges
-      .filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target))
-      .map((edge, index) => ({
+    edges: filteredEdges.map((edge, index) => ({
         ...edge,
         id: `${edge.source}-${edge.target}-${index}`,
         label: edge.label.trim() || undefined,

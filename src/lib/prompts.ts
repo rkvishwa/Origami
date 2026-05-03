@@ -54,6 +54,10 @@ Rules:
 - Stay strictly grounded in the source brief.
 - Build a compact map that helps a user understand the source quickly, not an exhaustive taxonomy.
 - Prefer 4-7 high-signal cards unless the brief clearly needs more.
+- Include one clear root or orientation card that the rest of the flow can branch from.
+- Prefer forward-only relationships that read left-to-right.
+- Keep side-links sparse and only include them when they materially clarify the source.
+- Place action and decision ideas near the end of the flow when the source supports them.
 - Every node must include a short card-ready summary plus richer inspector details.
 - references must use only source-grounded labels such as repository file paths, PDF section headings with page ranges, or the source label itself.
 - Use source-agnostic node kinds: root, section, insight, decision, and action.

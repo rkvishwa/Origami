@@ -19,6 +19,7 @@ type SourceQuestionBoxProps = {
   status: "idle" | "loading" | "error";
   error?: string | null;
   history: SourceQuestionTurn[];
+  sourceContextKey: string | null;
   sourceFlowRenderKey: number;
   sourceFlowState: SourceFlowState;
   onRefreshSourceFlow: () => void;
@@ -32,6 +33,7 @@ export function SourceQuestionBox({
   status,
   error,
   history,
+  sourceContextKey,
   sourceFlowRenderKey,
   sourceFlowState,
   onRefreshSourceFlow,
@@ -104,6 +106,7 @@ export function SourceQuestionBox({
         ) : null}
 
         <SourceFlowMap
+          contextKey={sourceContextKey}
           onRefresh={onRefreshSourceFlow}
           renderKey={sourceFlowRenderKey}
           state={sourceFlowState}
