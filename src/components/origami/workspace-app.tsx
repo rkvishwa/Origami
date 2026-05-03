@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
-import { Loader2 } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import { Loader2, ArrowRight, FolderGit2, Terminal, UploadCloud } from "lucide-react";
 
 import { OrigamiCanvas } from "@/components/origami/canvas";
 import { DocumentInsight } from "@/components/origami/document-insight";
@@ -25,8 +27,10 @@ import { sampleSources } from "@/lib/samples";
 import { uploadStore } from "@/lib/upload-store";
 import {
   buildRepoOverviewText,
+  createSourceBrief,
   createOrigamiMessagePayload,
   createMvpSourceBrief,
+  createSourceQaSnapshot,
   getSelectedRepoTab,
   getSourceStats,
 } from "@/lib/source";
@@ -39,6 +43,8 @@ import type {
   RepoSourceDocument,
   RepoTabAnalysisState,
   SourceDocument,
+  SourceFlowOutput,
+  SourceFlowState,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -56,6 +62,10 @@ function buildRepoAnalysisKey(source: RepoSourceDocument, path: string) {
 
 function buildStandaloneAnalysisKey(source: BaseTextSourceDocument) {
   return `${source.kind}::${source.label}::${source.fetchedAt ?? "local"}`;
+}
+
+function createSourceContextToken() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function findLatestToolPart(messages: UIMessage[]) {
@@ -82,28 +92,6 @@ function findLatestToolPart(messages: UIMessage[]) {
   return null;
 }
 
-function PanelFrame({
-  title,
-  subtitle,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]">
-      <div className="border-b border-white/10 px-5 py-4">
-        <div className="text-[10px] uppercase tracking-[0.25em] text-[#A1A1AA]">{title}</div>
-        <p className="mt-2 text-sm leading-6 text-[#71717A]">{subtitle}</p>
-      </div>
-      <div className="max-h-[560px] overflow-auto p-4">
-        {children}
-      </div>
-    </section>
-  );
-}
-
 function LoadingCard({ label }: { label: string }) {
   return (
     <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-white/10 bg-[#0A0A0A]">
@@ -122,13 +110,18 @@ export function WorkspaceApp() {
   const initializedRef = useRef(false);
   const activeRepoOverviewRequestKey = useRef<string | null>(null);
   const autoAnalyzedOverviewKeyRef = useRef<string | null>(null);
+  const activeSourceFlowRequestKey = useRef<string | null>(null);
   const [source, setSource] = useState<SourceDocument | null>(null);
-  const [surfaceMessage, setSurfaceMessage] = useState<string | null>(null);
+  const [sourceContextKey, setSourceContextKey] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [isIntakeBusy, setIsIntakeBusy] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfInsight, setPdfInsight] = useState<PdfInsightOutput | null>(null);
+  const [sourceFlowState, setSourceFlowState] = useState<SourceFlowState>({
+    status: "idle",
+  });
+  const [sourceFlowRenderKey, setSourceFlowRenderKey] = useState(0);
   const [standaloneInsightState, setStandaloneInsightState] = useState<RepoTabAnalysisState>({
     status: "idle",
   });
@@ -147,10 +140,34 @@ export function WorkspaceApp() {
     SourceQuestionTurn[]
   >([]);
   const [rightSidebarTab, setRightSidebarTab] = useState<"source" | "breakdown" | "v0">("source");
-  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
+  const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(true);
   const [repoOverviewGraphs, setRepoOverviewGraphs] = useState<
     Record<string, ArchitectureGraphOutput>
   >({});
+
+  const [githubUrl, setGithubUrl] = useState("");
+  const [pastedText, setPastedText] = useState("");
+
+  const handleScanRepo = () => {
+    if (!githubUrl.trim()) return;
+    const target = githubUrl.trim();
+    localStorage.setItem("origami_last_route", `?repo=${encodeURIComponent(target)}`);
+    window.history.replaceState({}, '', `/workspace?repo=${encodeURIComponent(target)}`);
+    void loadRepo(target);
+  };
+
+  const handleUsePastedText = () => {
+    if (!pastedText.trim()) return;
+    localStorage.setItem("origami_last_route", `?source=pasted-store`);
+    window.history.replaceState({}, '', `/workspace?source=pasted-store`);
+    const nextSource: BaseTextSourceDocument = {
+      kind: "file",
+      label: "Pasted source text",
+      text: pastedText,
+      fetchedAt: new Date().toISOString(),
+    };
+    replaceSource(nextSource);
+  };
 
   const { error, messages, sendMessage, setMessages, status, stop } = useChat({
     onError: (nextError) => {
@@ -174,16 +191,53 @@ export function WorkspaceApp() {
     }
 
     initializedRef.current = true;
+
+    // Restore session state saved before navigating to MVP (handles upload/pasted sources
+    // that cannot be recovered from URL params alone since uploadStore is cleared on first read).
+    const savedSourceRaw = sessionStorage.getItem("origami_session_source");
+      if (savedSourceRaw) {
+      try {
+        const parsedSource = JSON.parse(savedSourceRaw) as SourceDocument;
+        sessionStorage.removeItem("origami_session_source");
+
+        const savedPdfInsightRaw = sessionStorage.getItem("origami_session_pdfInsight");
+        if (savedPdfInsightRaw) {
+          setPdfInsight(JSON.parse(savedPdfInsightRaw) as PdfInsightOutput);
+          sessionStorage.removeItem("origami_session_pdfInsight");
+        }
+
+        const savedInsightRaw = sessionStorage.getItem("origami_session_standaloneInsight");
+        if (savedInsightRaw) {
+          setStandaloneInsightState(JSON.parse(savedInsightRaw) as RepoTabAnalysisState);
+          sessionStorage.removeItem("origami_session_standaloneInsight");
+        }
+
+        setSource(parsedSource);
+        setSourceContextKey(createSourceContextToken());
+        setSourceFlowState({ status: "loading" });
+        return;
+      } catch {
+        // Corrupted session data — clear and fall through to URL-based restoration.
+        sessionStorage.removeItem("origami_session_source");
+        sessionStorage.removeItem("origami_session_pdfInsight");
+        sessionStorage.removeItem("origami_session_standaloneInsight");
+      }
+    }
+
     const repoUrl = searchParams.get("repo");
     const sampleId = searchParams.get("sample");
     const uploadSource = searchParams.get("source");
+    const queryUrl = searchParams.get("url");
 
-    if (repoUrl) {
-      void loadRepo(repoUrl);
+    if (repoUrl || queryUrl) {
+      const target = repoUrl || queryUrl;
+      localStorage.setItem("origami_last_route", `?repo=${encodeURIComponent(target!)}`);
+      void loadRepo(target!);
       return;
     }
 
     if (sampleId) {
+      localStorage.setItem("origami_last_route", `?sample=${encodeURIComponent(sampleId)}`);
       const sample = sampleSources.find((item) => item.id === sampleId) ?? DEFAULT_SAMPLE;
       loadSample(sample.id);
       return;
@@ -193,6 +247,7 @@ export function WorkspaceApp() {
       const file = uploadStore.file;
       uploadStore.file = null;
       if (file) {
+        localStorage.setItem("origami_last_route", `?source=upload-store`);
         void handleFileUpload(file);
       }
       return;
@@ -202,18 +257,38 @@ export function WorkspaceApp() {
       const text = uploadStore.pastedText;
       uploadStore.pastedText = null;
       if (text) {
+        localStorage.setItem("origami_last_route", `?source=pasted-store`);
         const nextSource: BaseTextSourceDocument = {
           kind: "file",
           label: "Pasted source text",
           text,
           fetchedAt: new Date().toISOString(),
         };
-        replaceSource(nextSource, "Loaded pasted source text.");
+        replaceSource(nextSource);
       }
       return;
     }
 
-    loadSample(DEFAULT_SAMPLE.id);
+    const lastRoute = localStorage.getItem("origami_last_route");
+    if (lastRoute) {
+      const search = new URLSearchParams(lastRoute);
+      const lastRepo = search.get("repo");
+      const lastSample = search.get("sample");
+      
+      if (lastRepo) {
+        router.replace(`/workspace${lastRoute}`);
+        void loadRepo(lastRepo);
+        return;
+      }
+      if (lastSample) {
+        router.replace(`/workspace${lastRoute}`);
+        const sample = sampleSources.find((item) => item.id === lastSample) ?? DEFAULT_SAMPLE;
+        loadSample(sample.id);
+        return;
+      }
+    }
+
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -284,10 +359,18 @@ export function WorkspaceApp() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (!source || !sourceContextKey) {
+      return;
+    }
+
+    void loadSourceFlow(source, sourceContextKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceContextKey]);
+
   async function loadRepo(url: string) {
     setIsIntakeBusy(true);
     setSurfaceError(null);
-    setSurfaceMessage("Scanning repository documents...");
 
     try {
       const response = await fetch("/api/github-repo", {
@@ -301,7 +384,7 @@ export function WorkspaceApp() {
         throw new Error(payload.error ?? "Could not scan the repository.");
       }
 
-      replaceSource(payload as RepoSourceDocument, `Scanned ${payload.label}.`);
+      replaceSource(payload as RepoSourceDocument);
     } catch (nextError) {
       const message =
         nextError instanceof Error ? nextError.message : "Failed to load repository.";
@@ -311,16 +394,18 @@ export function WorkspaceApp() {
     }
   }
 
-  function replaceSource(nextSource: SourceDocument, message?: string) {
+  function replaceSource(nextSource: SourceDocument) {
     setSource(nextSource);
+    setSourceContextKey(createSourceContextToken());
     setMessages([]);
     setMvpSiteState({ status: "idle" });
     setWorkspaceQuestion("");
     setWorkspaceQuestionHistory([]);
     setWorkspaceQuestionState({ status: "idle", error: null });
     setSurfaceError(null);
-    setSurfaceMessage(message ?? null);
+    setSourceFlowState({ status: "loading" });
     activeRepoOverviewRequestKey.current = null;
+    activeSourceFlowRequestKey.current = null;
     autoAnalyzedOverviewKeyRef.current = null;
     setStandaloneInsightState({ status: "idle" });
 
@@ -336,7 +421,7 @@ export function WorkspaceApp() {
 
   function loadSample(sampleId: string) {
     const sample = sampleSources.find((item) => item.id === sampleId) ?? DEFAULT_SAMPLE;
-    replaceSource(sample.source, `Loaded sample: ${sample.title}`);
+    replaceSource(sample.source);
 
     if (sample.source.kind === "pdf") {
       setPdfInsight(buildPdfFallbackInsight(sample.source));
@@ -445,6 +530,78 @@ export function WorkspaceApp() {
     }
   }
 
+  async function loadSourceFlow(
+    nextSource: SourceDocument,
+    contextKey: string,
+    options?: {
+      preserveExisting?: boolean;
+    },
+  ) {
+    const previousFlow =
+      sourceFlowState.status === "ready"
+        ? sourceFlowState.flow
+        : sourceFlowState.status === "loading" || sourceFlowState.status === "error"
+          ? sourceFlowState.flow
+          : undefined;
+
+    activeSourceFlowRequestKey.current = contextKey;
+    setSourceFlowState(
+      options?.preserveExisting && previousFlow
+        ? { status: "loading", flow: previousFlow }
+        : { status: "loading" },
+    );
+
+    try {
+      const response = await fetch("/api/source-flow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceKind: nextSource.kind,
+          sourceLabel: nextSource.label,
+          brief: createSourceBrief(nextSource),
+        }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Could not generate the source flow map.");
+      }
+
+      if (activeSourceFlowRequestKey.current !== contextKey) {
+        return;
+      }
+
+      setSourceFlowState({
+        status: "ready",
+        flow: payload as SourceFlowOutput,
+      });
+      setSourceFlowRenderKey((current) => current + 1);
+    } catch (nextError) {
+      const message =
+        nextError instanceof Error
+          ? nextError.message
+          : "Could not generate the source flow map.";
+
+      if (activeSourceFlowRequestKey.current !== contextKey) {
+        return;
+      }
+
+      setSourceFlowState(
+        previousFlow
+          ? { status: "error", error: message, flow: previousFlow }
+          : { status: "error", error: message },
+      );
+    }
+  }
+
+  function handleRefreshSourceFlow() {
+    if (!source || !sourceContextKey) {
+      return;
+    }
+
+    void loadSourceFlow(source, sourceContextKey, { preserveExisting: true });
+  }
+
   async function handleAnalyzeInteractive() {
     if (!source) {
       return;
@@ -465,6 +622,8 @@ export function WorkspaceApp() {
 
 
   async function handleFileUpload(file: File) {
+    localStorage.setItem("origami_last_route", `?source=upload-store`);
+    window.history.replaceState({}, '', `/workspace?source=upload-store`);
     setIsIntakeBusy(true);
     setSurfaceError(null);
 
@@ -489,7 +648,7 @@ export function WorkspaceApp() {
 
         setPdfPreviewUrl(URL.createObjectURL(file));
         setPdfInsight(payload.insight as PdfInsightOutput);
-        replaceSource(payload.source as SourceDocument, `Loaded ${file.name}.`);
+        replaceSource(payload.source as SourceDocument);
         return;
       }
 
@@ -501,7 +660,7 @@ export function WorkspaceApp() {
         fetchedAt: new Date().toISOString(),
       };
 
-      replaceSource(nextSource, `Loaded ${file.name}.`);
+      replaceSource(nextSource);
     } catch (nextError) {
       const message =
         nextError instanceof Error ? nextError.message : "Failed to load the selected file.";
@@ -537,6 +696,24 @@ export function WorkspaceApp() {
       const artifact = payload as MvpSiteArtifact;
       persistMvpArtifact(artifact);
       setMvpSiteState({ status: "ready", artifact });
+
+      // Persist workspace state to sessionStorage so it survives the navigation to the
+      // MVP page and can be fully restored when the user navigates back.
+      try {
+        sessionStorage.setItem("origami_session_source", JSON.stringify(source));
+        if (pdfInsight) {
+          sessionStorage.setItem("origami_session_pdfInsight", JSON.stringify(pdfInsight));
+        }
+        if (standaloneInsightState.status === "ready") {
+          sessionStorage.setItem(
+            "origami_session_standaloneInsight",
+            JSON.stringify(standaloneInsightState),
+          );
+        }
+      } catch {
+        // sessionStorage may be unavailable or full — navigation still proceeds.
+      }
+
       router.push(buildMvpArtifactHref(artifact.id));
     } catch (nextError) {
       const message =
@@ -545,6 +722,37 @@ export function WorkspaceApp() {
           : "Could not generate the in-app MVP site.";
       setMvpSiteState({ status: "error", error: message });
     }
+  }
+
+  function handleNewWorkspace() {
+    setSource(null);
+    setSourceContextKey(null);
+    setMessages([]);
+    setMvpSiteState({ status: "idle" });
+    setSurfaceError(null);
+    setPdfInsight(null);
+    if (pdfPreviewUrl) {
+      URL.revokeObjectURL(pdfPreviewUrl);
+    }
+    setPdfPreviewUrl(null);
+    setSourceFlowState({ status: "idle" });
+    setSourceFlowRenderKey(0);
+    setStandaloneInsightState({ status: "idle" });
+    setRepoTabAnalyses({});
+    setRepoOverviewGraphs({});
+    setWorkspaceQuestion("");
+    setWorkspaceQuestionHistory([]);
+    setWorkspaceQuestionState({ status: "idle", error: null });
+    setGithubUrl("");
+    setPastedText("");
+    activeRepoOverviewRequestKey.current = null;
+    activeSourceFlowRequestKey.current = null;
+    autoAnalyzedOverviewKeyRef.current = null;
+    localStorage.removeItem("origami_last_route");
+    sessionStorage.removeItem("origami_session_source");
+    sessionStorage.removeItem("origami_session_pdfInsight");
+    sessionStorage.removeItem("origami_session_standaloneInsight");
+    window.history.replaceState({}, "", "/workspace");
   }
 
   async function handleAskWorkspaceQuestion() {
@@ -561,7 +769,8 @@ export function WorkspaceApp() {
         body: JSON.stringify({
           sourceKind: source.kind,
           sourceLabel: source.label,
-          brief: createMvpSourceBrief(source, { pdfInsight }),
+          brief: createSourceBrief(source),
+          sourceSnapshot: createSourceQaSnapshot(source),
           question: workspaceQuestion.trim(),
         }),
       });
@@ -618,16 +827,16 @@ export function WorkspaceApp() {
   }
 
   if (!source) {
-    return (
-      <div className="flex min-h-screen bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
-        <div className="flex-1 flex flex-col min-h-screen min-w-0">
-          <header className="sticky top-0 z-40 h-[72px] border-b border-white/10 bg-[#0A0A0A] flex items-center px-4 md:px-6 gap-4">
-             <div className="h-10 w-10 rounded-lg border border-white/10 bg-white/5 animate-pulse" />
-             <div className="h-5 w-48 bg-white/5 rounded animate-pulse" />
-          </header>
-          <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 sm:p-6">
-            <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-[#0A0A0A] p-4 items-center justify-center min-h-[600px]">
-              {isIntakeBusy ? (
+    if (isIntakeBusy) {
+      return (
+        <div className="flex min-h-screen bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
+          <div className="flex-1 flex flex-col min-h-screen min-w-0">
+            <header className="sticky top-0 z-40 h-[72px] border-b border-white/10 bg-[#0A0A0A] flex items-center px-4 md:px-6 gap-4">
+               <div className="h-10 w-10 rounded-lg border border-white/10 bg-white/5 animate-pulse" />
+               <div className="h-5 w-48 bg-white/5 rounded animate-pulse" />
+            </header>
+            <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 sm:p-6">
+              <div className="flex-1 flex flex-col rounded-xl border border-white/10 bg-[#0A0A0A] p-4 items-center justify-center min-h-[600px]">
                 <div className="flex flex-col items-center justify-center gap-3">
                   <div className="flex items-center gap-2 text-lime-300">
                     <Loader2 className="h-6 w-6 animate-spin" />
@@ -637,17 +846,149 @@ export function WorkspaceApp() {
                     <div className="h-full w-full animate-[shimmer_1.4s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-transparent via-lime-300/60 to-transparent bg-[length:200%_100%]" />
                   </div>
                 </div>
-              ) : (
-                <span className="text-white/60 animate-pulse">Initializing Origami workspace…</span>
-              )}
-            </div>
-            <div className="w-full xl:w-[420px] shrink-0 rounded-xl border border-white/10 bg-[#0A0A0A] p-4 animate-pulse flex flex-col gap-4">
-               <div className="h-8 w-full bg-white/5 rounded" />
-               <div className="h-32 w-full bg-white/5 rounded" />
-               <div className="h-32 w-full bg-white/5 rounded" />
+              </div>
+              <div className="w-full xl:w-[420px] shrink-0 rounded-xl border border-white/10 bg-[#0A0A0A] p-4 animate-pulse flex flex-col gap-4">
+                 <div className="h-8 w-full bg-white/5 rounded" />
+                 <div className="h-32 w-full bg-white/5 rounded" />
+                 <div className="h-32 w-full bg-white/5 rounded" />
+              </div>
             </div>
           </div>
         </div>
+      );
+    }
+
+    return (
+      <div className="flex min-h-screen flex-col bg-[#000000] text-[#EDEDED] font-sans selection:bg-lime-300/30">
+        <input
+          accept=".pdf,.txt,.md,.mdx,.json,.yaml,.yml,.csv,.ts,.tsx,.js,.jsx"
+          className="hidden"
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (file) {
+              await handleFileUpload(file);
+            }
+            event.target.value = "";
+          }}
+          ref={fileInputRef}
+          type="file"
+        />
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0A0A0A] backdrop-blur-2xl px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/"
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/80 transition hover:bg-white/[0.08]"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" />
+            </Link>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black overflow-hidden">
+              <Image src="/icon.png" alt="Origami" width={40} height={40} className="h-full w-full object-contain p-1" />
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold text-white">Create Workspace</h1>
+              <p className="text-xs text-white/50">Universal Source Intake</p>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 mx-auto w-full max-w-[1200px] px-6 py-20 flex flex-col items-center justify-center">
+          <div className="text-center mb-16">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tighter text-white mb-4">
+              Import your source
+            </h1>
+            <p className="text-base text-[#A1A1AA] max-w-[500px] mx-auto leading-relaxed">
+              Origami supports GitHub repositories, PDF documents, and raw text. Upload or paste below to begin your analysis and generate a **v0-powered MVP**.
+            </p>
+          </div>
+
+          {surfaceError && (
+            <div className="mb-8 w-full max-w-[1000px] rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-50 shrink-0">
+              {surfaceError}
+            </div>
+          )}
+
+          <div className="grid gap-6 md:grid-cols-3 w-full max-w-[1000px]">
+            {/* GitHub Input */}
+            <div className="group relative flex flex-col rounded-2xl border border-white/10 bg-[#0A0A0A] p-6 transition-all hover:border-lime-300/30 hover:shadow-[0_0_30px_rgba(163,230,53,0.05)]">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition-colors group-hover:bg-lime-300 group-hover:text-black">
+                <FolderGit2 className="h-5 w-5" />
+              </div>
+              <h3 className="mb-2 text-lg font-medium text-white">Import Repository</h3>
+              <p className="mb-6 text-sm text-[#A1A1AA]">
+                Scan an entire codebase to generate an interactive architecture dashboard.
+              </p>
+              <div className="mt-auto">
+                <input
+                  className="mb-3 w-full rounded-lg border border-white/10 bg-black px-4 py-2.5 text-sm text-white outline-none transition-all placeholder:text-[#52525B] focus:border-lime-300/50 focus:ring-1 focus:ring-lime-300/50"
+                  onChange={(e) => setGithubUrl(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleScanRepo()}
+                  placeholder="https://github.com/owner/repo"
+                  value={githubUrl}
+                />
+                <button
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!githubUrl.trim() || isIntakeBusy}
+                  onClick={handleScanRepo}
+                  type="button"
+                >
+                  Scan Repo <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Paste Text */}
+            <div className="group relative flex flex-col rounded-2xl border border-white/10 bg-[#0A0A0A] p-6 transition-all hover:border-lime-300/30 hover:shadow-[0_0_30px_rgba(163,230,53,0.05)]">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition-colors group-hover:bg-lime-300 group-hover:text-black">
+                <Terminal className="h-5 w-5" />
+              </div>
+              <h3 className="mb-2 text-lg font-medium text-white">Paste Source Text</h3>
+              <p className="mb-6 text-sm text-[#A1A1AA]">
+                Instantly analyze dense rules, policies, or technical documentation.
+              </p>
+              <div className="mt-auto">
+                <textarea
+                  className="mb-3 h-[84px] w-full resize-none rounded-lg border border-white/10 bg-black px-4 py-2.5 text-sm text-white outline-none transition-all placeholder:text-[#52525B] focus:border-lime-300/50 focus:ring-1 focus:ring-lime-300/50"
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="Paste your text here..."
+                  value={pastedText}
+                />
+                <button
+                  className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!pastedText.trim() || isIntakeBusy}
+                  onClick={handleUsePastedText}
+                  type="button"
+                >
+                  Analyze Text <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Upload File */}
+            <div className="group relative flex flex-col rounded-2xl border bg-[#0A0A0A] p-6 transition-all border-white/10 hover:border-lime-300/30 hover:shadow-[0_0_30px_rgba(163,230,53,0.05)]">
+              <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors text-white group-hover:bg-lime-300 group-hover:text-black">
+                <UploadCloud className="h-5 w-5" />
+              </div>
+              <h3 className="mb-2 text-lg font-medium text-white">Upload Documents</h3>
+              <p className="mb-6 text-sm text-[#A1A1AA]">
+                Extract and visualize data from local PDF files or text documents.
+              </p>
+              <div
+                className="mt-auto flex h-[84px] mb-3 items-center justify-center rounded-lg border border-dashed border-white/20 bg-black/50 transition-colors cursor-pointer group-hover:border-lime-300/50 group-hover:bg-lime-300/10 hover:border-lime-300/50 hover:bg-lime-300/10"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="text-sm text-[#A1A1AA]">Click to browse</span>
+              </div>
+              <button
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/10 bg-[#111] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:border-lime-300/50 hover:bg-lime-300/10 hover:text-lime-300 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isIntakeBusy}
+                type="button"
+              >
+                Select File
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -861,21 +1202,13 @@ export function WorkspaceApp() {
           onAnalyzeInteractive={() => void handleAnalyzeInteractive()}
           onStopInteractive={stop}
           onGenerateV0Preview={() => void handleGenerateMvpSite()}
+          onNewWorkspace={handleNewWorkspace}
         />
 
         <div className="flex-1 p-4 sm:p-6 flex flex-col gap-4">
-          {(surfaceMessage || surfaceError) && (
-            <div className="flex flex-col gap-2 shrink-0">
-              {surfaceMessage && (
-                <div className="rounded-xl border border-lime-300/15 bg-lime-300/10 px-4 py-3 text-sm text-lime-50/88">
-                  {surfaceMessage}
-                </div>
-              )}
-              {surfaceError && (
-                <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-50">
-                  {surfaceError}
-                </div>
-              )}
+          {surfaceError && (
+            <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-50 shrink-0">
+              {surfaceError}
             </div>
           )}
 
@@ -887,19 +1220,29 @@ export function WorkspaceApp() {
                   error={workspaceQuestionState.error}
                   history={workspaceQuestionHistory}
                   onQuestionChange={setWorkspaceQuestion}
+                  onRefreshSourceFlow={handleRefreshSourceFlow}
                   onSubmit={() => void handleAskWorkspaceQuestion()}
                   question={workspaceQuestion}
+                  sourceFlowRenderKey={sourceFlowRenderKey}
+                  sourceFlowState={sourceFlowState}
                   sourceLabel={selectedSourceView.title}
                   status={workspaceQuestionState.status}
                 />
               </div>
-              <OrigamiCanvas
-                chatError={error?.message}
-                messages={messages}
-                onOpenRepoPath={activeSource.kind === "repo" ? openRepoTab : undefined}
-                sourceLabel={selectedSourceView.title}
-                status={status}
-              />
+
+              {messages.length === 0 && status !== "submitted" && status !== "streaming" ? (
+                <div className="flex-1">
+                  {renderBreakdownContent()}
+                </div>
+              ) : (
+                <OrigamiCanvas
+                  chatError={error?.message}
+                  messages={messages}
+                  onOpenRepoPath={activeSource.kind === "repo" ? openRepoTab : undefined}
+                  sourceLabel={selectedSourceView.title}
+                  status={status}
+                />
+              )}
             </div>
 
           </div>

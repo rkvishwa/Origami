@@ -1,6 +1,6 @@
-# Origami
+# Origami (Created with v0)
 
-Origami is a hackathon-first "Doc-to-App Engine" built with Next.js and the Vercel AI SDK. It ingests pasted text, text files, text-based PDFs, or a GitHub repository URL, then turns the source into an overview-first interactive workspace:
+Origami is a hackathon-first "Doc-to-App Engine" **created with v0** and built with Next.js and the Vercel AI SDK. It ingests pasted text, text files, text-based PDFs, or a GitHub repository URL, then turns the source into an overview-first interactive workspace:
 
 - a calculator for formulas, fees, or penalty rules
 - a multi-doc repo dashboard with an interactive architecture graph and node inspector
@@ -8,16 +8,17 @@ Origami is a hackathon-first "Doc-to-App Engine" built with Next.js and the Verc
 - a deterministic package dashboard for `package.json` and key manifests
 - a scenario simulator for branching playbooks and if/then manuals
 - a PDF breakdown view with extracted sections, notable metrics, and source-aware follow-up actions
-- a `v0 MVP` pane that generates an in-app single-page MVP route with copyable React/Tailwind code
-- a source Q&A box in the workspace for asking grounded questions about the active PDF, repo, or text
+- a **v0 MVP Builder** (powered by v0) that generates an in-app single-page MVP route with copyable React/Tailwind code
+- an MCP-backed source Q&A box that can inspect the active PDF, repo, or text before answering
 - a customization prompt bar on generated MVP pages for revising the design in place
 
 ## Stack
 
-- Next.js 14 App Router
+- Front end developed by v0
 - Tailwind CSS
 - Vercel AI SDK with `streamText`
 - OpenAI via `@ai-sdk/openai`
+- Model Context Protocol via `@ai-sdk/mcp` and `@modelcontextprotocol/sdk`
 - optional v0 Model API access via `https://api.v0.dev/v1/chat/completions`
 - React Flow
 - Recharts
@@ -51,7 +52,7 @@ npm run dev
 ```bash
 OPENAI_API_KEY=your_openai_api_key
 OPENAI_BASE_URL=
-OPENAI_MODEL=gpt-4o
+OPENAI_MODEL=gpt-5.5
 V0_API_KEY=
 GITHUB_TOKEN=
 ```
@@ -85,5 +86,6 @@ npm run build
 - Repo dashboards show an `Overview` tab first, then one tab per included markdown or manifest file.
 - Architecture nodes include evidence-backed explanations, related nodes, and file shortcuts in a persistent inspector.
 - PDF mode supports text-based PDFs only. Scanned or image-only PDFs are intentionally out of scope for this MVP.
+- Source Q&A now uses a request-local HTTP MCP server so the model can list, search, and read grounded source snippets on demand.
 - Generated MVP pages open inside Origami at `/workspace/mvp/[artifactId]` and are stored in browser-local storage so they survive refreshes and same-browser tabs.
 - The AI only returns typed tool payloads. The UI stays deterministic and React-rendered.

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, PlusCircle, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ type DashboardNavbarProps = {
   onAnalyzeInteractive: () => void;
   onStopInteractive: () => void;
   onGenerateV0Preview: () => void;
+  onNewWorkspace?: () => void;
 };
 
 export function DashboardNavbar({
@@ -28,6 +29,7 @@ export function DashboardNavbar({
   onAnalyzeInteractive,
   onStopInteractive,
   onGenerateV0Preview,
+  onNewWorkspace,
 }: DashboardNavbarProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#0A0A0A] backdrop-blur-2xl">
@@ -50,6 +52,17 @@ export function DashboardNavbar({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {onNewWorkspace && (
+              <button
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/60 transition hover:border-lime-300/30 hover:bg-lime-300/10 hover:text-lime-300"
+                onClick={onNewWorkspace}
+                type="button"
+                title="Clear current workspace and start fresh"
+              >
+                <PlusCircle className="h-4 w-4" />
+                New Workspace
+              </button>
+            )}
             {interactiveBusy ? (
               <button
                 className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-100 transition hover:bg-red-500/16"

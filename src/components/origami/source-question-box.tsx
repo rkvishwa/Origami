@@ -2,6 +2,9 @@
 
 import { Loader2, MessageSquareText, Sparkles } from "lucide-react";
 
+import { SourceFlowMap } from "@/components/origami/source-flow-map";
+import type { SourceFlowState } from "@/lib/types";
+
 type SourceQuestionTurn = {
   id: string;
   question: string;
@@ -16,6 +19,9 @@ type SourceQuestionBoxProps = {
   status: "idle" | "loading" | "error";
   error?: string | null;
   history: SourceQuestionTurn[];
+  sourceFlowRenderKey: number;
+  sourceFlowState: SourceFlowState;
+  onRefreshSourceFlow: () => void;
 };
 
 export function SourceQuestionBox({
@@ -26,6 +32,9 @@ export function SourceQuestionBox({
   status,
   error,
   history,
+  sourceFlowRenderKey,
+  sourceFlowState,
+  onRefreshSourceFlow,
 }: SourceQuestionBoxProps) {
   return (
     <section className="rounded-xl border border-white/10 bg-[#0A0A0A]">
@@ -40,11 +49,16 @@ export function SourceQuestionBox({
             </h2>
             <p className="mt-2 text-sm leading-6 text-white/56">
               Ask about the uploaded PDF, repo, or text. Origami will answer from the active
-              source context.
+              source context and can inspect files or sections on demand before replying.
             </p>
           </div>
-          <div className="rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-lime-100">
-            grounded
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-sky-100">
+              MCP-backed
+            </div>
+            <div className="rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-lime-100">
+              grounded
+            </div>
           </div>
         </div>
       </div>
@@ -88,6 +102,12 @@ export function SourceQuestionBox({
             {error}
           </div>
         ) : null}
+
+        <SourceFlowMap
+          onRefresh={onRefreshSourceFlow}
+          renderKey={sourceFlowRenderKey}
+          state={sourceFlowState}
+        />
 
         {history.length ? (
           <div className="space-y-3">

@@ -26,14 +26,14 @@ export function MvpSitePanel({
       <div className="rounded-xl border border-dashed border-white/10 bg-[#0A0A0A] px-5 py-8">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
-              v0 MVP
+            <div className="text-[10px] uppercase tracking-[0.25em] text-lime-300 font-bold">
+              v0 MVP Builder
             </div>
             <h3 className="mt-2 text-lg font-semibold text-white/90">
               Build a single-page MVP for {sourceLabel}
             </h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/56">
-              Origami will generate an in-app website route with grounded content and copyable
+              Origami will generate an in-app website route **powered by v0** with grounded content and copyable
               React/Tailwind code.
             </p>
           </div>
@@ -55,7 +55,7 @@ export function MvpSitePanel({
       <div className="flex h-full min-h-[260px] items-center justify-center rounded-xl border border-white/10 bg-[#0A0A0A]">
         <div className="flex flex-col items-center gap-3 text-white/60">
           <Loader2 className="h-6 w-6 animate-spin text-lime-300" />
-          <p className="text-sm">Generating the in-app MVP site…</p>
+          <p className="text-sm">Generating the **v0-powered** in-app MVP site…</p>
         </div>
       </div>
     );
@@ -76,8 +76,8 @@ export function MvpSitePanel({
       <div className="rounded-xl border border-white/10 bg-[#111] p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
-              v0 MVP
+            <div className="text-[10px] uppercase tracking-[0.25em] text-lime-300 font-bold">
+              v0 MVP Builder
             </div>
             <h3 className="mt-2 text-xl font-semibold text-white/92">{artifact.appTitle}</h3>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/62">{artifact.summary}</p>

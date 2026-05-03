@@ -77,6 +77,68 @@ export type SourceDocument =
   | RepoSourceDocument
   | PdfSourceDocument;
 
+export type SourceQaTextItemSnapshot = {
+  id: "source";
+  label: string;
+  content: string;
+  contentTruncated: boolean;
+};
+
+export type SourceQaTextSnapshot = {
+  kind: "text" | "file";
+  label: string;
+  sourceUrl?: string;
+  item: SourceQaTextItemSnapshot;
+};
+
+export type SourceQaPdfSectionSnapshot = {
+  id: string;
+  heading: string;
+  summary: string;
+  excerpt: string;
+  pageStart: number;
+  pageEnd: number;
+};
+
+export type SourceQaPdfSnapshot = {
+  kind: "pdf";
+  label: string;
+  fileName: string;
+  pageCount: number;
+  parseStatus: "ready" | "unsupported";
+  fullText: string;
+  fullTextTruncated: boolean;
+  sections: SourceQaPdfSectionSnapshot[];
+};
+
+export type SourceQaRepoTabSnapshot = {
+  id: string;
+  path: string;
+  title: string;
+  kind: RepoFileKind;
+  manifestType?: RepoManifestType;
+  fetched: boolean;
+  includedInOverview: boolean;
+  content?: string;
+  contentTruncated: boolean;
+};
+
+export type SourceQaRepoSnapshot = {
+  kind: "repo";
+  label: string;
+  repo: RepoMetadata;
+  overviewFiles: string[];
+  selectedTabId: string;
+  totalMatchedFiles: number;
+  truncated: boolean;
+  tabs: SourceQaRepoTabSnapshot[];
+};
+
+export type SourceQaSnapshot =
+  | SourceQaTextSnapshot
+  | SourceQaPdfSnapshot
+  | SourceQaRepoSnapshot;
+
 export type SourceStats = {
   lines: number;
   words: number;
@@ -126,6 +188,51 @@ export type ArchitectureGraphOutput = {
   defaultSelectedNodeId?: string;
   nodes: ArchitectureGraphNode[];
   edges: ArchitectureGraphEdge[];
+};
+
+export type SourceFlowNodeKind =
+  | "root"
+  | "section"
+  | "insight"
+  | "decision"
+  | "action";
+
+export type SourceFlowReferenceKind = "repo-path" | "pdf-section" | "source";
+
+export type SourceFlowReference = {
+  kind: SourceFlowReferenceKind;
+  label: string;
+  detail: string;
+};
+
+export type SourceFlowNode = {
+  id: string;
+  label: string;
+  kind: SourceFlowNodeKind;
+  summary: string;
+  details: string;
+  references: SourceFlowReference[];
+  relatedNodeIds: string[];
+  column: number;
+  position: {
+    x: number;
+    y: number;
+  };
+};
+
+export type SourceFlowEdge = {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+};
+
+export type SourceFlowOutput = {
+  title: string;
+  summary: string;
+  defaultSelectedNodeId?: string;
+  nodes: SourceFlowNode[];
+  edges: SourceFlowEdge[];
 };
 
 export type RelatedFileInsight = {
@@ -346,4 +453,22 @@ export type RepoTabAnalysisState =
   | {
       status: "error";
       error: string;
+    };
+
+export type SourceFlowState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "loading";
+      flow?: SourceFlowOutput;
+    }
+  | {
+      status: "ready";
+      flow: SourceFlowOutput;
+    }
+  | {
+      status: "error";
+      error: string;
+      flow?: SourceFlowOutput;
     };

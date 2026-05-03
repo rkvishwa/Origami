@@ -145,47 +145,47 @@ export function OrigamiCanvas({
   }
 
   return (
-    <section className="flex h-[800px] flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0A0A0A]">
-      <div className="flex-1 overflow-auto p-4">{content}</div>
-
-      <div className="border-t border-white/10 bg-[#0A0A0A] px-5 py-4 shrink-0">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
-              Interactive
-            </div>
-            <h2 className="mt-2 text-xl font-semibold text-white/92">Generative canvas</h2>
-            <p className="mt-2 text-sm leading-6 text-white/56">
-              Streamed through the AI SDK and grounded in the active source selection.
-            </p>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-2xl border border-white/10 bg-[#111] p-6 sm:p-8">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
+            Interactive
           </div>
-          <div className="rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-lime-100">
-            {status === "streaming" || status === "submitted" ? "streaming" : "ready"}
-          </div>
+          <h2 className="mt-2 text-xl font-semibold text-white/92">Generative canvas</h2>
+          <p className="mt-2 text-sm leading-6 text-white/56">
+            Streamed through the AI SDK and grounded in the active source selection.
+          </p>
         </div>
-
-        {assistantText ? (
-          <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white/66">
-            <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-[0.22em] text-white/38">
-              <Sparkles className="h-3.5 w-3.5" />
-              Model notes
-            </div>
-            {assistantText}
-          </div>
-        ) : null}
-
-        {latestToolPart && (status === "submitted" || status === "streaming") ? (
-          <div className="mt-4 rounded-xl border border-lime-300/15 bg-lime-300/8 px-4 py-3 text-sm text-lime-50/80">
-            Interactive output is ready. Origami is still streaming any final notes.
-          </div>
-        ) : null}
-
-        {chatError ? (
-          <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-50">
-            {chatError}
-          </div>
-        ) : null}
+        <div className="rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-[10px] uppercase tracking-[0.24em] text-lime-100">
+          {status === "streaming" || status === "submitted" ? "Streaming..." : "Ready"}
+        </div>
       </div>
-    </section>
+
+      {assistantText ? (
+        <div className="rounded-xl border border-white/8 bg-white/[0.03] px-6 py-5 text-base leading-7 text-white/70">
+          <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-white/38">
+            <Sparkles className="h-4 w-4" />
+            Model notes
+          </div>
+          {assistantText}
+        </div>
+      ) : null}
+
+      {latestToolPart && (status === "submitted" || status === "streaming") ? (
+        <div className="rounded-xl border border-lime-300/15 bg-lime-300/8 px-6 py-5 text-base text-lime-50/80">
+          Interactive output is ready. Origami is still streaming any final notes.
+        </div>
+      ) : null}
+
+      {chatError ? (
+        <div className="rounded-xl border border-red-400/20 bg-red-500/10 px-6 py-5 text-base text-red-50">
+          {chatError}
+        </div>
+      ) : null}
+
+      <div className="w-full pt-2 pb-10">
+        {content}
+      </div>
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import type {
   PdfSourceDocument,
   RepoFileDescriptor,
   RepoSourceDocument,
+  SourceQaSnapshot,
   SourceDocument,
   SourceStats,
 } from "@/lib/types";
@@ -11,6 +12,9 @@ import { getRepoManifestInsights, getRepoSignalBadges } from "@/lib/repo-insight
 const SOURCE_CHAR_LIMIT = 18000;
 const REPO_FILE_CHAR_LIMIT = 3200;
 const SOURCE_BRIEF_CHAR_LIMIT = 12000;
+const SOURCE_QA_TEXT_LIMIT = 14000;
+const SOURCE_QA_REPO_FILE_LIMIT = 5000;
+const SOURCE_QA_PDF_TEXT_LIMIT = 18000;
 
 export function getSourceStats(text: string): SourceStats {
   const normalized = text.trim();
@@ -43,6 +47,15 @@ export function truncateSourceText(text: string, limit = SOURCE_CHAR_LIMIT) {
   return {
     text: `${normalized.slice(0, limit)}\n\n[Source truncated for this analysis pass.]`,
     truncated: true,
+  };
+}
+
+function sliceSourceForSnapshot(text: string, limit: number) {
+  const normalized = text.trim();
+
+  return {
+    text: normalized.slice(0, limit),
+    truncated: normalized.length > limit,
   };
 }
 
@@ -249,6 +262,74 @@ export function createMvpSourceBrief(
   }
 
   return createSourceBrief(source);
+}
+
+export function createSourceQaSnapshot(source: SourceDocument): SourceQaSnapshot {
+  if (source.kind === "repo") {
+    return {
+      kind: "repo",
+      label: source.label,
+      repo: source.repo,
+      overviewFiles: source.overviewFiles,
+      selectedTabId: source.selectedTabId,
+      totalMatchedFiles: source.totalMatchedFiles,
+      truncated: source.truncated,
+      tabs: source.tabs.map((tab) => {
+        const content = source.contentCache[tab.path];
+        const truncatedContent = content
+          ? sliceSourceForSnapshot(content, SOURCE_QA_REPO_FILE_LIMIT)
+          : null;
+
+        return {
+          id: tab.id,
+          path: tab.path,
+          title: tab.title,
+          kind: tab.kind,
+          manifestType: tab.manifestType,
+          fetched: tab.fetched,
+          includedInOverview: tab.includedInOverview,
+          content: truncatedContent?.text || undefined,
+          contentTruncated: truncatedContent?.truncated ?? false,
+        };
+      }),
+    };
+  }
+
+  if (source.kind === "pdf") {
+    const truncatedText = sliceSourceForSnapshot(source.text, SOURCE_QA_PDF_TEXT_LIMIT);
+
+    return {
+      kind: "pdf",
+      label: source.label,
+      fileName: source.fileName,
+      pageCount: source.pageCount,
+      parseStatus: source.parseStatus,
+      fullText: truncatedText.text,
+      fullTextTruncated: truncatedText.truncated,
+      sections: source.sections.map((section) => ({
+        id: section.id,
+        heading: section.heading,
+        summary: section.summary,
+        excerpt: section.excerpt,
+        pageStart: section.pageStart,
+        pageEnd: section.pageEnd,
+      })),
+    };
+  }
+
+  const truncatedText = sliceSourceForSnapshot(source.text, SOURCE_QA_TEXT_LIMIT);
+
+  return {
+    kind: source.kind,
+    label: source.label,
+    sourceUrl: source.sourceUrl,
+    item: {
+      id: "source",
+      label: source.label,
+      content: truncatedText.text,
+      contentTruncated: truncatedText.truncated,
+    },
+  };
 }
 
 export function createOrigamiMessagePayload(source: SourceDocument) {
