@@ -199,7 +199,7 @@ export function MvpSiteArtifactPage({ artifactId }: MvpSiteArtifactPageProps) {
             </div>
           </div>
 
-          <div className="mt-6 rounded border border-lime-500/30 bg-white/[0.02] p-5 shadow-[0_0_20px_rgba(163,230,53,0.05)] transition-all focus-within:border-lime-500/60 focus-within:ring-1 focus-within:ring-lime-500/50 focus-within:shadow-[0_0_25px_rgba(163,230,53,0.1)]">
+          <div className="mt-6 rounded border border-lime-500/30 bg-white/[0.02] p-5 shadow-[0_0_20px_rgba(163,230,53,0.05)] transition-all animate-border-glow focus-within:animate-none focus-within:border-lime-500/60 focus-within:ring-1 focus-within:ring-lime-500/50 focus-within:shadow-[0_0_25px_rgba(163,230,53,0.1)]">
             <textarea
               className="min-h-[112px] w-full resize-none bg-transparent text-base leading-7 text-white/90 outline-none placeholder:text-white/30"
               onChange={(event) => setCustomizationPrompt(event.target.value)}

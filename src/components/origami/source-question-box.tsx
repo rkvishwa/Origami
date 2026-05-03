@@ -49,33 +49,8 @@ export function SourceQuestionBox({
 
   return (
     <section className="rounded-xl border border-white/10 bg-[#0A0A0A]">
-      <div className="border-b border-white/10 px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">
-              Source chat
-            </div>
-            <h2 className="mt-2 text-xl font-semibold text-white/92">
-              Ask questions about {sourceLabel}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-white/56">
-              Ask about the uploaded PDF, repo, or text. Origami will answer from the active
-              source context and can inspect files or sections on demand before replying.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-sky-100">
-              MCP-backed
-            </div>
-            <div className="rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.24em] text-lime-100">
-              grounded
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="space-y-4 p-4">
-        <div className="rounded-2xl border border-lime-500/30 bg-[#111] p-4 shadow-[0_0_20px_rgba(163,230,53,0.05)] transition-all focus-within:border-lime-500/50 focus-within:shadow-[0_0_25px_rgba(163,230,53,0.08)]">
+        <div className="rounded-2xl border border-lime-500/30 bg-[#111] p-4 shadow-[0_0_20px_rgba(163,230,53,0.05)] transition-all animate-border-glow focus-within:animate-none focus-within:border-lime-500/50 focus-within:shadow-[0_0_25px_rgba(163,230,53,0.08)]">
           <textarea
             className="min-h-[96px] w-full resize-none bg-transparent text-sm leading-6 text-white/82 outline-none placeholder:text-white/28"
             onChange={(event) => onQuestionChange(event.target.value)}
