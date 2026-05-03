@@ -129,11 +129,11 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
   const initializedRef = useRef(false);
   const activeRepoOverviewRequestKey = useRef<string | null>(null);
   const [source, setSource] = useState<SourceDocument | null>(null);
-  const [githubUrl, setGithubUrl] = useState("");
+  const [_githubUrl, setGithubUrl] = useState("");
   const [pastedText, setPastedText] = useState("");
   const [surfaceMessage, setSurfaceMessage] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
-  const [isIntakeBusy, setIsIntakeBusy] = useState(false);
+  const [_isIntakeBusy, setIsIntakeBusy] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null);
   const [pdfInsight, setPdfInsight] = useState<PdfInsightOutput | null>(null);
@@ -459,6 +459,7 @@ export function WorkspaceApp({ hasV0Key }: WorkspaceAppProps) {
     await sendMessage({ text: createOrigamiMessagePayload(source) });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleUsePastedText() {
     if (!pastedText.trim()) {
       setSurfaceError("Paste some source text first.");

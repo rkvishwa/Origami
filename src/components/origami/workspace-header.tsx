@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -45,7 +46,7 @@ export function DashboardNavbar({
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black overflow-hidden">
-            <img src="/icon.png" alt="Origami" className="h-full w-full object-contain p-1" />
+            <Image src="/icon.png" alt="Origami" width={40} height={40} className="h-full w-full object-contain p-1" />
           </div>
           <div className="hidden md:block">
             <h1 className="text-sm font-semibold text-white/94">{title}</h1>

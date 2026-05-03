@@ -4,7 +4,6 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileText, FolderGit2, LayoutTemplate, Loader2, Terminal, UploadCloud } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { sampleSources } from "@/lib/samples";
 
 export function LandingPage() {
